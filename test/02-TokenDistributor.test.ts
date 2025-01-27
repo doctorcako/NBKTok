@@ -20,6 +20,7 @@ describe("TokenDistributor", function () {
 
     const INITIAL_SUPPLY = ethers.parseEther("100");
     const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+    const RATE = BigInt(1000);
 
     beforeEach(async function () {
         [owner, addr1, addr2, addr3, ...addrs] = await ethers.getSigners();
@@ -160,7 +161,7 @@ describe("TokenDistributor", function () {
                 const amount = ethers.parseEther("100");
 
                 // First distribution
-                await expect(tokenDistributor.distributeTokens(addr1.address, amount))
+                await expect(tokenDistributor.distributeTokens(addr1.address, amount, RATE))
                 .to.emit(tokenDistributor, "ActivityPerformed")
                 .withArgs(owner.address, amount);
                 
@@ -208,18 +209,18 @@ describe("TokenDistributor", function () {
 
         it("Should handle distribution limits and errors correctly", async function () {
             try {
-                const exceedingAmount = INITIAL_SUPPLY + ethers.parseEther("1");
+                const exceedingAmount = ethers.parseEther("101");
 
                 // Attempt distributing more tokens than contract has
-                await expect(tokenDistributor.distributeTokens(addr1.address, exceedingAmount))
+                await expect(tokenDistributor.distributeTokens(addr1.address, exceedingAmount * RATE, RATE))
                     .to.be.revertedWithCustomError(tokenDistributor, "NotEnoughTokensOnDistributor");
 
                 // Distribute entire INITIAL_SUPPLY (100)
-                await tokenDistributor.distributeTokens(addr1.address, INITIAL_SUPPLY);
+                await tokenDistributor.distributeTokens(addr1.address, INITIAL_SUPPLY, RATE);
                 
                 // Attempt distributing after emptying contract
                 const smallAmount = ethers.parseEther("1");
-                await expect(tokenDistributor.distributeTokens(addr2.address, smallAmount))
+                await expect(tokenDistributor.distributeTokens(addr2.address, smallAmount, RATE))
                     .to.be.revertedWithCustomError(tokenDistributor, "NotEnoughTokensOnDistributor");
 
                 TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", Number(0));
@@ -237,7 +238,7 @@ describe("TokenDistributor", function () {
                 await receiverContract.waitForDeployment();
 
                 const amount = ethers.parseEther("50");
-                await tokenDistributor.distributeTokens(await receiverContract.getAddress(), amount);
+                await tokenDistributor.distributeTokens(await receiverContract.getAddress(), amount, RATE);
                 
                 expect(await nbkToken.balanceOf(await receiverContract.getAddress())).to.equal(amount);
 
@@ -291,11 +292,11 @@ describe("TokenDistributor", function () {
                 ];
 
                 for (const dist of distributions) {
-                    await tokenDistributor.distributeTokens(dist.address, dist.amount);
+                    await tokenDistributor.distributeTokens(dist.address, dist.amount, RATE);
                     // Pause & unpause between calls
                     await tokenDistributor.pauseDistributor();
                     // revert reason from OpenZeppelin is "Pausable: paused"
-                    await expect(tokenDistributor.distributeTokens(dist.address, dist.amount))
+                    await expect(tokenDistributor.distributeTokens(dist.address, dist.amount, RATE))
                         .to.be.revertedWithCustomError(tokenDistributor,"EnforcedPause");
                     await tokenDistributor.unpauseDistributor();
                 }
@@ -502,7 +503,7 @@ describe("TokenDistributor", function () {
                 const initialBalance = await nbkToken.balanceOf(await tokenDistributor.getAddress());
                 
                 // We'll just do a normal distribution from that extra 50
-                await tokenDistributor.distributeTokens(addr1.address, amount);
+                await tokenDistributor.distributeTokens(addr1.address, amount, RATE);
 
                 const finalBalance = await nbkToken.balanceOf(await tokenDistributor.getAddress());
                 expect(finalBalance).to.equal(initialBalance - amount);
@@ -521,7 +522,7 @@ describe("TokenDistributor", function () {
                 // Pause the contract => expect revert with "Pausable: paused" from OpenZeppelin
                 await tokenDistributor.pauseDistributor();
 
-                await expect(tokenDistributor.distributeTokens(addr1.address, amount))
+                await expect(tokenDistributor.distributeTokens(addr1.address, amount, RATE))
                     .to.be.revertedWithCustomError(tokenDistributor,"EnforcedPause");
 
                 // The setDailyLimit is still allowed if the contract doesn't block it. 
@@ -534,7 +535,7 @@ describe("TokenDistributor", function () {
 
                 // Now unpause as owner
                 await tokenDistributor.unpauseDistributor();
-                await tokenDistributor.distributeTokens(addr1.address, amount);
+                await tokenDistributor.distributeTokens(addr1.address, amount, RATE);
 
                 TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
             } catch (error) {
@@ -582,7 +583,7 @@ describe("TokenDistributor", function () {
                 const amount = ethers.parseEther("2"); // total=20 < 100 dailyLimit
 
                 for (let i = 0; i < operations; i++) {
-                    await tokenDistributor.distributeTokens(addr1.address, amount);
+                    await tokenDistributor.distributeTokens(addr1.address, amount, RATE);
                 }
 
                 const finalBalance = await nbkToken.balanceOf(addr1.address);
@@ -602,7 +603,7 @@ describe("TokenDistributor", function () {
                 const amount = ethers.parseEther("10");
 
                 // distribution => ActivityPerformed
-                await expect(tokenDistributor.distributeTokens(addr1.address, amount))
+                await expect(tokenDistributor.distributeTokens(addr1.address, amount, RATE))
                     .to.emit(tokenDistributor, "ActivityPerformed")
                     .withArgs(owner.address, amount);
 
@@ -629,7 +630,7 @@ describe("TokenDistributor", function () {
                     .to.emit(tokenDistributor, "Unpaused")
                     .withArgs(owner.address);
 
-                await expect(tokenDistributor.connect(addr2).distributeTokens(addr1.address, amount))
+                await expect(tokenDistributor.connect(addr2).distributeTokens(addr1.address, amount, RATE))
                     .to.revertedWithCustomError(tokenDistributor,"UnauthorizedCaller")
 
                 TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
@@ -645,7 +646,7 @@ describe("TokenDistributor", function () {
                 const amount = ethers.parseEther("1");
                 
                 for (let i = 0; i < operations; i++) {
-                    await expect(tokenDistributor.distributeTokens(addr1.address, amount))
+                    await expect(tokenDistributor.distributeTokens(addr1.address, amount, RATE))
                         .to.emit(tokenDistributor, "ActivityPerformed")
                         .withArgs(owner.address, amount);
 
@@ -764,20 +765,20 @@ describe("TokenDistributor", function () {
 
                 for (let i = 0; i < 5; i++) {
                     // distribute
-                    await tokenDistributor.distributeTokens(addr1.address, amount);
+                    await tokenDistributor.distributeTokens(addr1.address, amount,RATE);
 
                     // Pause
                     await tokenDistributor.pauseDistributor();
 
                     // Attempt distributing while paused => "Pausable: paused"
-                    await expect(tokenDistributor.distributeTokens(addr1.address, amount))
+                    await expect(tokenDistributor.distributeTokens(addr1.address, amount, RATE))
                         .to.be.revertedWithCustomError(tokenDistributor,"EnforcedPause");
 
                     // Unpause
                     await tokenDistributor.unpauseDistributor();
 
                     // distribute again
-                    await tokenDistributor.distributeTokens(addr1.address, amount);
+                    await tokenDistributor.distributeTokens(addr1.address, amount, RATE);
                 }
 
                 // final balance for addr1 => 5 * 2 calls * 20 each => 200
@@ -819,7 +820,7 @@ describe("TokenDistributor", function () {
                 for (const op of operations) {
                     switch (op.action) {
                         case "distribute":
-                            await tokenDistributor.distributeTokens(op.recipient!, op.amount!);
+                            await tokenDistributor.distributeTokens(op.recipient!, op.amount!, RATE);
                             break;
                         case "updateLimit":
                             await tokenDistributor.setDailyLimit(op.newLimit!);
@@ -854,12 +855,12 @@ describe("TokenDistributor", function () {
                 
                 // Pause => "Pausable: paused" revert
                 await tokenDistributor.pauseDistributor();
-                await expect(tokenDistributor.distributeTokens(addr1.address, amount))
+                await expect(tokenDistributor.distributeTokens(addr1.address, amount, RATE))
                     .to.be.revertedWithCustomError(tokenDistributor,"EnforcedPause");;
 
                 // Unpause
                 await tokenDistributor.unpauseDistributor();
-                await tokenDistributor.distributeTokens(addr1.address, amount);
+                await tokenDistributor.distributeTokens(addr1.address, amount, RATE);
 
                 // final checks
                 expect(await nbkToken.balanceOf(addr1.address)).to.equal(amount);
@@ -879,14 +880,15 @@ describe("TokenDistributor", function () {
                 const failedOps = [
                     // Distribute to zero => now we expect custom error "InvalidBeneficiary"
                     {
-                        op: () => tokenDistributor.distributeTokens(ZERO_ADDRESS, amount),
+                        op: () => tokenDistributor.distributeTokens(ZERO_ADDRESS, amount * RATE, RATE),
                         expectedError: "InvalidBeneficiary"
                     },
                     // Distribute more than contract has => "NotEnoughTokensOnDistributor"
                     {
                         op: () => tokenDistributor.distributeTokens(
                             addr1.address, 
-                            INITIAL_SUPPLY + ethers.parseEther("50")
+                            (INITIAL_SUPPLY + ethers.parseEther("50")) * RATE,
+                            RATE
                         ),
                         expectedError: "NotEnoughTokensOnDistributor"
                     }
@@ -902,7 +904,7 @@ describe("TokenDistributor", function () {
                 }
 
                 // Should still work after fails
-                await tokenDistributor.distributeTokens(addr1.address, amount);
+                await tokenDistributor.distributeTokens(addr1.address, amount, RATE);
                 expect(await nbkToken.balanceOf(addr1.address)).to.equal(amount);
 
                 TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
@@ -917,19 +919,20 @@ describe("TokenDistributor", function () {
         it("Should handle minimum and maximum values correctly", async function () {
             try {
                 const minAmount = BigInt(1); 
+                // await nbkToken.mint(await tokenDistributor.getAddress(), INITIAL_SUPPLY);
                 // max is the entire supply for now, since dailyLimit=100 and supply=100 => we can do 100 in one go
 
                 // distribute min
-                await tokenDistributor.distributeTokens(addr1.address, minAmount);
-                expect(await nbkToken.balanceOf(addr1.address)).to.equal(minAmount);
+                await tokenDistributor.distributeTokens(addr1.address, minAmount * RATE, RATE);
+                expect(await nbkToken.balanceOf(addr1.address)).to.equal(minAmount * RATE);
+                
 
-                // distribute rest
-                const remain = INITIAL_SUPPLY - minAmount;
-                await tokenDistributor.distributeTokens(addr2.address, remain);
-                expect(await nbkToken.balanceOf(addr2.address)).to.equal(remain);
-
+                const remain = (INITIAL_SUPPLY - minAmount) / RATE; // cantidad en wei
+               
+                await tokenDistributor.distributeTokens(addr2.address, remain * RATE, RATE);
+                expect(await nbkToken.balanceOf(addr2.address)).to.equal(remain * RATE);
                 // Now the contract is empty => distributing 1 more => NotEnoughTokensOnDistributor
-                await expect(tokenDistributor.distributeTokens(addr3.address, minAmount))
+                await expect(tokenDistributor.distributeTokens(addr3.address, minAmount * RATE, RATE))
                     .to.be.revertedWithCustomError(tokenDistributor, "NotEnoughTokensOnDistributor");
 
                 TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
@@ -991,7 +994,7 @@ describe("TokenDistributor", function () {
 
                 const promises = [];
                 for (let i = 0; i < ops; i++) {
-                    promises.push(tokenDistributor.distributeTokens(addr1.address, amount));
+                    promises.push(tokenDistributor.distributeTokens(addr1.address, amount, RATE));
                 }
 
                 await Promise.all(promises);
@@ -1021,7 +1024,7 @@ describe("TokenDistributor", function () {
                     if (dist.delay > 0) {
                         await time.increase(dist.delay);
                     }
-                    await tokenDistributor.distributeTokens(dist.recipient, dist.amount);
+                    await tokenDistributor.distributeTokens(dist.recipient, dist.amount, RATE);
                 }
 
                 expect(await nbkToken.balanceOf(addr1.address)).to.equal(ethers.parseEther("30"));
@@ -1085,7 +1088,7 @@ describe("TokenDistributor", function () {
                 // Sequence of ops
                 const operations = [
                     async () => {
-                        await tokenDistributor.distributeTokens(addr1.address, amount);
+                        await tokenDistributor.distributeTokens(addr1.address, amount, RATE);
                         return { type: "distribution", recipient: addr1.address, amount } as OperationResult;
                     },
                     async () => {

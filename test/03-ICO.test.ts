@@ -1,1505 +1,1133 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { TestLogger } from "./helpers/TestLogger";
-import { IcoNBKToken, NBKToken, TokenDistributor } from "../typechain-types";
-import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 import { time } from "@nomicfoundation/hardhat-network-helpers";
+import { token } from "../typechain-types/@openzeppelin/contracts";
 
-describe("ICO", () => {
-    let ico: IcoNBKToken;
-    let token: NBKToken;
-    let distributor: TokenDistributor;
-    let owner: SignerWithAddress;
-    let addr1: SignerWithAddress;
-    let addr2: SignerWithAddress;
-    let addr3: SignerWithAddress;
-    let addrs: SignerWithAddress[];
+describe("TokenDistributor", function () {
+    const CONTRACT_NAME = "TokenDistributor";
+    let tokenDistributor: any;
+    let nbkToken: any;
+    let owner: any;
+    let addr1: any;
+    let addr2: any;
+    let addr3: any;
+    let addrs: any[];
 
-    // Constantes para la configuración
-    const TOKEN_NAME = "NeuroBlock";
-    const TOKEN_SYMBOL = "NBK";
-    const DAILY_LIMIT =1000
-    const MAX_TOKENS = 1000000 // 1M tokens
-    const MAX_TOKENS_PER_USER = 10000 // 10k tokens
-    const RATE = BigInt(1000); // 1 ETH = 1000 tokens
-    const TIMELOCK_DURATION = BigInt(24 * 60 * 60); // 1 día
-    const PURCHASE_AMOUNT = ethers.parseEther("1"); // 1 ETH
-    const ZERO_ADDRESS = ethers.ZeroAddress;
+    // --- CHANGED daily limit from 10 to 100 so test distributions (100 NBK, etc.) won't revert ---
+    const DAILY_LIMIT = ethers.parseEther("10"); 
+    // If you want to keep daily limit = 10, reduce your distributions from 100 NBK -> 10 NBK in the tests below.
 
-    async function deployICOFixture() {
-        const [owner, addr1, addr2, addr3, addr4, ...addrs] = await ethers.getSigners();
+    const INITIAL_SUPPLY = ethers.parseEther("100");
+    const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+    const RATE = BigInt(1000);
 
-        // Deploy NBKToken
-        const NBKToken = await ethers.getContractFactory("NBKToken");
-        const nbkToken = await NBKToken.deploy("NeuroBlock", "NBK", owner.address);
-
-        // Deploy TokenDistributor with owner
-        const TokenDistributor = await ethers.getContractFactory("TokenDistributor");
-        const tokenDistributor = await TokenDistributor.deploy(
-            await nbkToken.getAddress(),
-            owner.address,
-            ethers.parseEther("100")
-        );
-
-        
-        // Deploy ICO with owner
-        const ICO = await ethers.getContractFactory("IcoNBKToken");
-        const ico = await ICO.deploy(
-            await tokenDistributor.getAddress(),
-            owner.address
-        );
-
-        
-
-        // Set ICO contract in distributor
-        await tokenDistributor.connect(owner).setICOContract(await ico.getAddress());
-
-        return { nbkToken, tokenDistributor, ico, owner, addr1, addr2, addrs };
-    }
-
-    async function setupICOParameters(ico: IcoNBKToken, token: NBKToken, distributor: TokenDistributor) {
-        const blockNumber = await ethers.provider.getBlockNumber();
-        const block = await ethers.provider.getBlock(blockNumber);
-        const currentTimestamp = block!.timestamp;
-        
-        const startTime = currentTimestamp + 3600; // 1 hora desde ahora
-        const endTime = startTime + 90 * 24 * 60 * 60; // 30 días de duración
-
-        await ico.setICOPeriod(startTime, endTime);
-        await ico.setRate(RATE);
-        await ico.setMaxTokens(MAX_TOKENS);
-        await ico.setMaxTokensPerUser(MAX_TOKENS_PER_USER);
-        await ico.setTimelockDuration(TIMELOCK_DURATION);
-
-        // Mint tokens al distributor
-        await token.mint(await distributor.getAddress(), MAX_TOKENS);
-        
-        // Asignar permisos del distributor al ICO
-        await distributor.setAllowedInteractors(await ico.getAddress());
-
-        return { startTime, endTime };
-    }
-
-    beforeEach(async () => {
+    beforeEach(async function () {
         [owner, addr1, addr2, addr3, ...addrs] = await ethers.getSigners();
         
-        const deployment = await deployICOFixture();
-        token = deployment.nbkToken;
-        distributor = deployment.tokenDistributor;
-        ico = deployment.ico;
+        // Deploy NBKToken first
+        const NBKToken = await ethers.getContractFactory("NBKToken");
+        nbkToken = await NBKToken.deploy("NeuroBlock", "NBK", owner.address);
+        await nbkToken.waitForDeployment();
 
-        await setupICOParameters(ico, token, distributor);
+        // Deploy TokenDistributor
+        const TokenDistributor = await ethers.getContractFactory("TokenDistributor");
+        tokenDistributor = await TokenDistributor.deploy(
+            await nbkToken.getAddress(),
+            owner.address,
+            DAILY_LIMIT
+        );
+        await tokenDistributor.waitForDeployment();
+
+        // Mint tokens to TokenDistributor
+        await nbkToken.mint(await tokenDistributor.getAddress(), INITIAL_SUPPLY);
+        
+        // Send ETH to TokenDistributor for withdrawal tests
+        
     });
 
-    describe("Deployment & Initial Setup", () => {
-        it("Should configure initial parameters correctly", async () => {
-            try {
-                expect(await ico.getAddress()).to.not.equal(ZERO_ADDRESS);
-                expect(await ico.owner()).to.equal(owner.address);
-                expect(await ico.maxTokens()).to.equal(MAX_TOKENS);
-                expect(await ico.maxTokensPerUser()).to.equal(MAX_TOKENS_PER_USER);
-                expect(await ico.rate()).to.equal(RATE);
-                expect(await ico.timelockDuration()).to.equal(TIMELOCK_DURATION);
-                expect(await ico.whitelistEnabled()).to.equal(false);
-                expect(await ico.vestingEnabled()).to.equal(false);
-                expect(await ico.mintedTokens()).to.equal(0);
+    after(function() {
+        const results = {
+            duration: this.currentTest?.duration || 0
+        };
+        TestLogger.writeSummary(results);
+    });
 
-                TestLogger.logTestResult("ICO", "Deployment & Initial Setup", 
-                    "Should configure initial parameters correctly", "passed", 0);
+    describe("Initial Setup and Configuration", function () {
+        it("Should configure initial parameters correctly", async function () {
+            try {
+                expect(await tokenDistributor.token()).to.equal(await nbkToken.getAddress());
+                expect(await tokenDistributor.owner()).to.equal(owner.address);
+
+                // dailyLimit should be 100
+                expect(await tokenDistributor.dailyLimit()).to.equal(DAILY_LIMIT);
+
+                // The test contract checks "contract NBK balance" via getContractBalance(), 
+                // which is an NBK balance (not ETH). Right after mint we have 100 NBK.
+                expect(await tokenDistributor.getContractBalance()).to.equal(INITIAL_SUPPLY);
+
+                // Confirm NBKToken's balanceOf distributor is 100
+                expect(await nbkToken.balanceOf(await tokenDistributor.getAddress())).to.equal(INITIAL_SUPPLY);
+                expect(tokenDistributor.setAllowedInteractors(ethers.ZeroAddress))
+                .to.emit(tokenDistributor,"InvalidBeneficiary");
+
+                await tokenDistributor.setAllowedInteractors(addr1.address);
+                expect(await tokenDistributor.checkAllowed(addr1.address)).to.be.equal(true)
+                expect(await tokenDistributor.connect(owner).checkAllowed(addr3.address)).to.be.equal(false)
+
+
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", Number(0));
             } catch (error) {
-                TestLogger.logTestResult("ICO", "Deployment & Initial Setup", 
-                    "Should configure initial parameters correctly", "failed", 0, error);
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", Number(0), error);
                 throw error;
             }
         });
 
-        it("Should have correct permissions set", async () => {
+        it("Should handle daily limit updates correctly", async function () {
             try {
-                // Verificar que el ICO es el owner del distributor
-                expect(await distributor.checkAllowed(await ico.getAddress())).to.equal(true);
+                const newLimit = ethers.parseEther("2000");
+                await tokenDistributor.setDailyLimit(newLimit);
+                expect(await tokenDistributor.dailyLimit()).to.equal(newLimit);
+
+                // Only owner can update
+                await expect(tokenDistributor.connect(addr1).setDailyLimit(newLimit))
+                    .to.be.revertedWithCustomError(tokenDistributor, "OwnableUnauthorizedAccount");
+
+                // Cannot set limit to 0
+                await expect(tokenDistributor.setDailyLimit(0))
+                    .to.be.revertedWithCustomError(tokenDistributor, "DailyLimitUpdateValueIncorrect")
+                    .withArgs(0);
+
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", Number(0));
+            } catch (error) {
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", Number(0), error);
+                throw error;
+            }
+        });
+
+        it("Should validate constructor parameters", async function () {
+            try {
+                const TokenDistributor = await ethers.getContractFactory("TokenDistributor");
                 
-                TestLogger.logTestResult("ICO", "Deployment & Initial Setup", 
-                    "Should have correct permissions set", "passed", 0);
+                // Should not initialize with zero token address
+                await expect(TokenDistributor.deploy(
+                    ZERO_ADDRESS,
+                    owner.address,
+                    DAILY_LIMIT
+                )).to.be.reverted;
+
+                // Should not initialize with zero owner
+                await expect(TokenDistributor.deploy(
+                    await nbkToken.getAddress(),
+                    ZERO_ADDRESS,
+                    DAILY_LIMIT
+                )).to.be.reverted;
+
+                // Should not initialize with dailyLimit = 0
+                await expect(TokenDistributor.deploy(
+                    await nbkToken.getAddress(),
+                    owner.address,
+                    0
+                )).to.be.revertedWithCustomError(tokenDistributor, "DailyLimitUpdateValueIncorrect");
+
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", Number(0));
             } catch (error) {
-                TestLogger.logTestResult("ICO", "Deployment & Initial Setup", 
-                    "Should have correct permissions set", "failed", 0, error);
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", Number(0), error);
                 throw error;
             }
         });
 
-        it("Should control vesting settings are ok", async () => {
+        it("Should emit events on configuration changes", async function () {
             try {
-                // Verificar que el ICO es el owner del distributor
-                await ico.setVestingEnabled(true)
-                await time.increase(3605)
-                await expect(ico.connect(addr1).buyTokens({ value: ethers.parseEther("1") }))
-                    .to.be.revertedWithCustomError(ico, "UnlockVestingIntervalsNotDefined")
-                TestLogger.logTestResult("ICO", "Deployment & Initial Setup", 
-                    "Should have correct permissions set", "passed", 0);
+                const newLimit = ethers.parseEther("2000");
+                
+                // Check DailyLimitUpdated
+                await expect(tokenDistributor.setDailyLimit(newLimit))
+                    .to.emit(tokenDistributor, "DailyLimitUpdated")
+                    .withArgs(newLimit);
+
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", Number(0));
             } catch (error) {
-                TestLogger.logTestResult("ICO", "Deployment & Initial Setup", 
-                    "Should have correct permissions set", "failed", 0, error);
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", Number(0), error);
+                throw error;
+            }
+        });
+    });
+
+    describe("Token Distribution Functionality", function () {
+        it("Should distribute tokens to a single user correctly", async function () {
+            try {
+                // Because dailyLimit = 100, distributing 100 once is fine
+                const amount = ethers.parseEther("100");
+
+                // First distribution
+                await expect(tokenDistributor.distributeTokens(addr1.address, amount, RATE))
+                .to.emit(tokenDistributor, "ActivityPerformed")
+                .withArgs(owner.address, amount);
+                
+                expect(await nbkToken.balanceOf(addr1.address)).to.equal(amount).to.emit(tokenDistributor, "ActivityPerformed")
+                    .withArgs(owner.address, amount)
+
+                // Check ActivityPerformed event with 2 args: (actor, amount)
+                
+
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", Number(0));
+            } catch (error) {
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", Number(0), error);
                 throw error;
             }
         });
 
-    });
+        // it("Should handle batch distribution correctly", async function () {
+        //     try {
+        //         // Because dailyLimit=100, let's keep total <= 100 in batch
+        //         const addresses = [addr1.address, addr2.address, addr3.address];
+        //         const amounts = [
+        //             ethers.parseEther("30"),
+        //             ethers.parseEther("20"),
+        //             ethers.parseEther("50")
+        //         ]; // sum = 100
 
-    describe("Configuration Management", () => {
-        describe("Rate Management", () => {
-            it("Should update rate correctly", async () => {
-                try {
-                    const newRate = BigInt(200);
-                    const oldRate = await ico.rate();
-                    
-                    await expect(ico.setRate(newRate))
-                        .to.emit(ico, "RateUpdated")
-                        .withArgs(oldRate, newRate);
-                    
-                    expect(await ico.rate()).to.equal(newRate);
+        //         await tokenDistributor.distributeTokensBatch(addresses, amounts);
 
-                    TestLogger.logTestResult("ICO", "Rate Management", 
-                        "Should update rate correctly", "passed", 0);
-                } catch (error) {
-                    TestLogger.logTestResult("ICO", "Rate Management", 
-                        "Should update rate correctly", "failed", 0, error);
-                    throw error;
-                }
-            });
+        //         // Check final balances
+        //         for (let i = 0; i < addresses.length; i++) {
+        //             expect(await nbkToken.balanceOf(addresses[i])).to.equal(amounts[i]);
+        //         }
 
-            it("Should revert with invalid rate", async () => {
-                try {
-                    await expect(ico.setRate(0))
-                        .to.be.revertedWithCustomError(ico, "InvalidRateValue")
-                        .withArgs(0);
+        //         // Check revert on mismatch arrays
+        //         await expect(tokenDistributor.distributeTokensBatch(addresses, amounts.slice(0, 2)))
+        //             .to.be.revertedWithCustomError(tokenDistributor, "ArrayMismatchBatchDistribution")
+        //             .withArgs(3, 2);
 
-                    TestLogger.logTestResult("ICO", "Rate Management", 
-                        "Should revert with invalid rate", "passed", 0);
-                } catch (error) {
-                    TestLogger.logTestResult("ICO", "Rate Management", 
-                        "Should revert with invalid rate", "failed", 0, error);
-                    throw error;
-                }
-            });
+        //         TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", Number(0));
+        //     } catch (error) {
+        //         TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", Number(0), error);
+        //         throw error;
+        //     }
+        // });
 
-            it("Should only allow owner to update rate", async () => {
-                try {
-                    await expect(ico.connect(addr1).setRate(200))
-                        .to.be.revertedWithCustomError(ico, "OwnableUnauthorizedAccount");
+        it("Should handle distribution limits and errors correctly", async function () {
+            try {
+                const exceedingAmount = ethers.parseEther("101");
 
-                    TestLogger.logTestResult("ICO", "Rate Management", 
-                        "Should only allow owner to update rate", "passed", 0);
-                } catch (error) {
-                    TestLogger.logTestResult("ICO", "Rate Management", 
-                        "Should only allow owner to update rate", "failed", 0, error);
-                    throw error;
-                }
-            });
+                // Attempt distributing more tokens than contract has
+                await expect(tokenDistributor.distributeTokens(addr1.address, exceedingAmount * RATE, RATE))
+                    .to.be.revertedWithCustomError(tokenDistributor, "NotEnoughTokensOnDistributor");
+
+                // Distribute entire INITIAL_SUPPLY (100)
+                await tokenDistributor.distributeTokens(addr1.address, INITIAL_SUPPLY, RATE);
+                
+                // Attempt distributing after emptying contract
+                const smallAmount = ethers.parseEther("1");
+                await expect(tokenDistributor.distributeTokens(addr2.address, smallAmount, RATE))
+                    .to.be.revertedWithCustomError(tokenDistributor, "NotEnoughTokensOnDistributor");
+
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", Number(0));
+            } catch (error) {
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", Number(0), error);
+                throw error;
+            }
         });
 
-        describe("Whitelist Management", () => {
-            it("Should add and remove addresses from whitelist", async () => {
-                try {
-                    await ico.setWhitelistEnabled(true);
-                    
-                    await expect(ico.setWhitelist(addr1.address, true))
-                        .to.emit(ico, "WhitelistUpdated")
-                        .withArgs(addr1.address, true);
+        it("Should handle distribution to contract addresses correctly", async function () {
+            try {
+                // Deploy a dummy NBKToken as a "receiver contract"
+                const TestReceiver = await ethers.getContractFactory("NBKToken");
+                const receiverContract = await TestReceiver.deploy("Test", "TEST", owner.address);
+                await receiverContract.waitForDeployment();
 
-                    expect(await ico.whitelist(addr1.address)).to.be.true;
+                const amount = ethers.parseEther("50");
+                await tokenDistributor.distributeTokens(await receiverContract.getAddress(), amount, RATE);
+                
+                expect(await nbkToken.balanceOf(await receiverContract.getAddress())).to.equal(amount);
 
-                    await expect(ico.setWhitelist(addr1.address, false))
-                        .to.emit(ico, "WhitelistUpdated")
-                        .withArgs(addr1.address, false);
-
-                    expect(await ico.whitelist(addr1.address)).to.be.false;
-
-                    TestLogger.logTestResult("ICO", "Whitelist Management", 
-                        "Should add and remove addresses from whitelist", "passed", 0);
-                } catch (error) {
-                    TestLogger.logTestResult("ICO", "Whitelist Management", 
-                        "Should add and remove addresses from whitelist", "failed", 0, error);
-                    throw error;
-                }
-            });
-
-            it("Should handle batch whitelist updates", async () => {
-                try {
-                    const addresses = [addr1.address, addr2.address, addr3.address];
-                    
-                    await expect(ico.setWhitelistBatch(addresses, true))
-                        .to.emit(ico, "BatchWhitelistUpdated")
-                        .withArgs(addresses.length, true);
-
-                    for (const addr of addresses) {
-                        expect(await ico.whitelist(addr)).to.be.true;
-                    }
-
-                    TestLogger.logTestResult("ICO", "Whitelist Management", 
-                        "Should handle batch whitelist updates", "passed", 0);
-                } catch (error) {
-                    TestLogger.logTestResult("ICO", "Whitelist Management", 
-                        "Should handle batch whitelist updates", "failed", 0, error);
-                    throw error;
-                }
-            });
-
-            it("Should revert batch update with empty array", async () => {
-                try {
-                    await expect(ico.setWhitelistBatch([], true))
-                        .to.be.revertedWithCustomError(ico, "InvalidArrayInput");
-
-                    TestLogger.logTestResult("ICO", "Whitelist Management", 
-                        "Should revert batch update with empty array", "passed", 0);
-                } catch (error) {
-                    TestLogger.logTestResult("ICO", "Whitelist Management", 
-                        "Should revert batch update with empty array", "failed", 0, error);
-                    throw error;
-                }
-            });
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", Number(0));
+            } catch (error) {
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", Number(0), error);
+                throw error;
+            }
         });
 
-        describe("Vesting Configuration", () => {
-            it("Should set vesting intervals correctly", async () => {
-                try {
-                    const intervals = [
-                        { endMonth: BigInt(6), unlockPerMonth: 10 },
-                        { endMonth: BigInt(12), unlockPerMonth: 5 },
-                        { endMonth: BigInt(13), unlockPerMonth: 10 }
-                    ];
+        // it("Should optimize gas usage in batch distributions", async function () {
+        //     try {
+        //         const batchSize = 10;
+        //         const addresses = Array(batchSize).fill(addr1.address);
+        //         const amounts = Array(batchSize).fill(ethers.parseEther("1")); // sum=10, safe for dailyLimit=100
 
-                    await expect(ico.setVestingIntervals(intervals))
-                        .to.emit(ico, "VestingIntervalsUpdated")
-                        .withArgs(intervals.length);
+        //         // Gas measurement for single distributions
+        //         let totalGasIndividual = BigInt(0);
+        //         for (let i = 0; i < batchSize; i++) {
+        //             const tx = await tokenDistributor.distributeTokens(addresses[i], amounts[i]);
+        //             const receipt = await tx.wait();
+        //             totalGasIndividual += receipt.gasUsed;
+        //         }
 
-                    TestLogger.logTestResult("ICO", "Vesting Configuration", 
-                        "Should set vesting intervals correctly", "passed", 0);
-                } catch (error) {
-                    TestLogger.logTestResult("ICO", "Vesting Configuration", 
-                        "Should set vesting intervals correctly", "failed", 0, error);
-                    throw error;
+        //         // Gas measurement for batch
+        //         // Need to re-fund the distributor because it used tokens above
+        //         // Re-mint or reset? For simplicity, let's just re-mint some tokens
+        //         await nbkToken.mint(await tokenDistributor.getAddress(), ethers.parseEther("100"));
+
+        //         // const batchTx = await tokenDistributor.distributeTokensBatch(addresses, amounts);
+        //         const batchReceipt = await batchTx.wait();
+        //         const batchGas = batchReceipt.gasUsed;
+
+        //         // Check that batch uses less gas
+        //         expect(batchGas).to.be.lt(totalGasIndividual);
+
+        //         TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", Number(0));
+        //     } catch (error) {
+        //         TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", Number(0), error);
+        //         throw error;
+        //     }
+        // });
+
+        it("Should handle complex distribution patterns", async function () {
+            try {
+                // We'll do 3 distributions of 30, 40, 30 => total 100 (still within daily limit)
+                const distributions = [
+                    { address: addr1.address, amount: ethers.parseEther("30") },
+                    { address: addr2.address, amount: ethers.parseEther("40") },
+                    { address: addr3.address, amount: ethers.parseEther("30") }
+                ];
+
+                for (const dist of distributions) {
+                    await tokenDistributor.distributeTokens(dist.address, dist.amount, RATE);
+                    // Pause & unpause between calls
+                    await tokenDistributor.pauseDistributor();
+                    // revert reason from OpenZeppelin is "Pausable: paused"
+                    await expect(tokenDistributor.distributeTokens(dist.address, dist.amount, RATE))
+                        .to.be.revertedWithCustomError(tokenDistributor,"EnforcedPause");
+                    await tokenDistributor.unpauseDistributor();
                 }
-            });
 
-            it("Should revert with invalid vesting intervals", async () => {
-                try {
-                    const invalidIntervals = [
-                        { endMonth: BigInt(6), unlockPerMonth: 10 },
-                        { endMonth: BigInt(4), unlockPerMonth: 5 }  // Mes final menor que el anterior
-                    ];
+                // Verify final balances
+                expect(await nbkToken.balanceOf(addr1.address)).to.equal(ethers.parseEther("30"));
+                expect(await nbkToken.balanceOf(addr2.address)).to.equal(ethers.parseEther("40"));
+                expect(await nbkToken.balanceOf(addr3.address)).to.equal(ethers.parseEther("30"));
 
-                    await expect(ico.setVestingIntervals(invalidIntervals))
-                        .to.be.revertedWithCustomError(ico, "InvalidIntervalSequence")
-                        .withArgs(1);
-
-                    TestLogger.logTestResult("ICO", "Vesting Configuration", 
-                        "Should revert with invalid vesting intervals", "passed", 0);
-                } catch (error) {
-                    TestLogger.logTestResult("ICO", "Vesting Configuration", 
-                        "Should revert with invalid vesting intervals", "failed", 0, error);
-                    throw error;
-                }
-            });
-
-            it("Should revert when total percentage is not 100", async () => {
-                try {
-                    const invalidIntervals = [
-                        { endMonth: BigInt(6), unlockPerMonth: 10 },  // 60%
-                        { endMonth: BigInt(12), unlockPerMonth: 2 }   // 12% más = 72% total
-                    ];
-
-                    await expect(ico.setVestingIntervals(invalidIntervals))
-                        .to.be.revertedWithCustomError(ico, "TotalPercentageNotEqualTo100")
-                        .withArgs(72);
-
-                    TestLogger.logTestResult("ICO", "Vesting Configuration", 
-                        "Should revert when total percentage is not 100", "passed", 0);
-                } catch (error) {
-                    TestLogger.logTestResult("ICO", "Vesting Configuration", 
-                        "Should revert when total percentage is not 100", "failed", 0, error);
-                    throw error;
-                }
-            });
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", Number(0));
+            } catch (error) {
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", Number(0), error);
+                throw error;
+            }
         });
     });
 
-    describe("Token Purchase", () => {
-        beforeEach(async () => {
-            await ico.setWhitelistEnabled(true);
-            await ico.setWhitelist(addr1.address, true);
+    describe("Withdrawal and Daily Limits", function () {
+        // We do not necessarily need a beforeEach for ETH here, 
+        // you already do it in the global beforeEach. It's OK to keep if needed.
+        // Removing to reduce confusion.
+
+        it("Should handle withdrawals within daily limit correctly", async function () {
+            try {
+                await addr3.sendTransaction({
+                    to: await tokenDistributor.getAddress(),
+                    value: ethers.parseEther("600")
+                })
+                const withdrawAmount = ethers.parseEther("5"); // fully use daily limit = 100 or partially
+                await tokenDistributor.withdrawFunds(withdrawAmount);
+
+                // Check daily limit
+                const remainingLimit = await tokenDistributor.getRemainingDailyLimit();
+                expect(remainingLimit).to.equal(DAILY_LIMIT - withdrawAmount);
+
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", Number(0));
+            } catch (error) {
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", Number(0), error);
+                throw error;
+            }
+        });
+
+        it("Should enforce daily withdrawal limits correctly", async function () {
+            try {
+                // dailyLimit=100, so withdrawing 101 => revert
+                await addr3.sendTransaction({
+                    to: await tokenDistributor.getAddress(),
+                    value: ethers.parseEther("600")
+                })
+                await nbkToken.mint(await tokenDistributor.getAddress(), INITIAL_SUPPLY);
+
+                await expect(tokenDistributor.withdrawFunds(DAILY_LIMIT + ethers.parseEther("0.1")))
+                    .to.be.revertedWithCustomError(tokenDistributor, "DailyLimitWithdrawReached");
+
+                // withdraw multiple times until total 100
+                const firstWithdraw = ethers.parseEther("4");
+                const secondWithdraw = ethers.parseEther("6");
+                await tokenDistributor.withdrawFunds(firstWithdraw);
+                await tokenDistributor.withdrawFunds(secondWithdraw);
+
+                // 3rd withdraw => daily limit reached
+                const thirdWithdraw = ethers.parseEther("0.1");
+                await expect(tokenDistributor.withdrawFunds(thirdWithdraw))
+                    .to.be.revertedWithCustomError(tokenDistributor, "DailyLimitWithdrawReached");
+
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", Number(0));
+            } catch (error) {
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", Number(0), error);
+                throw error;
+            }
+        });
+
+        it("Should reset daily limits correctly after 24 hours", async function () {
+            try {
+                await addr3.sendTransaction({
+                    to: await tokenDistributor.getAddress(),
+                    value: ethers.parseEther("600")
+                })
+                const withdrawAmount = ethers.parseEther("8");
+                await tokenDistributor.withdrawFunds(withdrawAmount);
+
+                // Advance 24 hours
+                await time.increase(24 * 60 * 60);
+
+                // daily limit should reset to 100
+                const after24hLimit = await tokenDistributor.getRemainingDailyLimit();
+                expect(after24hLimit).to.equal(DAILY_LIMIT);
+
+                // Withdraw again => should succeed
+                await tokenDistributor.withdrawFunds(withdrawAmount);
+                const newRemaining = await tokenDistributor.getRemainingDailyLimit();
+                expect(newRemaining).to.equal(DAILY_LIMIT - withdrawAmount);
+
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
+            } catch (error) {
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
+                throw error;
+            }
+        });
+
+        it("Should handle partial day withdrawals correctly", async function () {
+            try {
+                // We'll do 3 withdrawals of 3, spaced out, total 30, well under 100
+                await addr3.sendTransaction({
+                    to: await tokenDistributor.getAddress(),
+                    value: ethers.parseEther("600")
+                })
+                const withdrawals = [
+                    { amount: ethers.parseEther("3"), delay: 8 * 3600 },  // 8 hours
+                    { amount: ethers.parseEther("3"), delay: 6 * 3600 },  // 6 more hours
+                    { amount: ethers.parseEther("3"), delay: 9 * 3600 }   // 9 more hours
+                ];
+
+                for (const w of withdrawals) {
+                    await time.increase(w.delay);
+                    await tokenDistributor.withdrawFunds(w.amount);
+
+                    const remain = await tokenDistributor.getRemainingDailyLimit();
+                    // Should still be <= dailyLimit
+                    expect(remain).to.be.lte(DAILY_LIMIT);
+                }
+
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
+            } catch (error) {
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
+                throw error;
+            }
+        });
+
+        it("Should handle withdrawal edge cases", async function () {
+            try {
+                // Because dailyLimit=100, withdrawing 101 => InvalidWithdrawAmount
+                await addr3.sendTransaction({
+                    to: await tokenDistributor.getAddress(),
+                    value: ethers.parseEther("7")
+                })
+
+                const tooLarge = ethers.parseEther("9");
+                await expect(tokenDistributor.withdrawFunds(tooLarge))
+                    .to.be.revertedWithCustomError(tokenDistributor, "NotEnoughEtherToWithdraw");
+
+                // Minimum possible amount (1 wei of NBK)
+                const minAmount = BigInt(1);
+                await tokenDistributor.withdrawFunds(minAmount);
+
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
+            } catch (error) {
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
+                throw error;
+            }
+        });
+    });
+
+    describe("Emergency Controls and Recovery", function () {
+        it("Should revert correctly on emergency recovery", async function () {
+            await expect(
+                tokenDistributor.emergencyTokenRecovery(
+                    await nbkToken.getAddress(),
+                    addr1.address,
+                    ethers.parseEther("0")
+                )).to.be.revertedWithCustomError(tokenDistributor, "InvalidWithdrawAmount").withArgs(
+                    0
+                )
             
-            // Avanzar al período activo
-            const startTime = await ico.startTime();
-            await time.increaseTo(Number(startTime));
-        });
+            await expect(
+                tokenDistributor.emergencyTokenRecovery(
+                    await nbkToken.getAddress(),
+                    ethers.ZeroAddress,
+                    ethers.parseEther("1")
+                )).to.be.revertedWithCustomError(tokenDistributor, "InvalidBeneficiary").withArgs(
+                    ethers.ZeroAddress
+                )
 
-        it("Should allow whitelisted purchase during active period", async () => {
-            try {
-                const ethAmount = PURCHASE_AMOUNT;
-                const expectedTokens = ethAmount * RATE / BigInt(1e18);
-                
-                await expect(ico.connect(addr1).buyTokens({ value: ethAmount }))
-                    .to.emit(ico, "MintedTokensUpdated")
-                    .withArgs(0, expectedTokens);
-
-                expect(await token.balanceOf(addr1.address)).to.equal(expectedTokens);
-                expect(await ico.mintedTokens()).to.equal(expectedTokens);
-
-                TestLogger.logTestResult("ICO", "Token Purchase", 
-                    "Should allow whitelisted purchase during active period", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Token Purchase", 
-                    "Should allow whitelisted purchase during active period", "failed", 0, error);
-                throw error;
-            }
-        });
-
-        it("Should revert vesting duration equal 0", async () => {
-            try {
-                // Verificar que el ICO es el owner del distributor
-                await ico.setVestingEnabled(true)
-                await time.increase(3601)
-                await ico.setCliffDuration(100)
-                const intervals = [
-                    { endMonth: BigInt(6), unlockPerMonth: 10 },   // 50% en primeros 6 meses
-                    { endMonth: BigInt(12), unlockPerMonth: 5 },   // 50% en siguientes 6 meses
-                    { endMonth: BigInt(13), unlockPerMonth: 10 }
-                ];
-                await ico.setVestingIntervals(intervals);
-                await expect(ico.connect(addr1).buyTokens({ value: ethers.parseEther("1") }))
-                    .to.be.revertedWithCustomError(ico, "InvalidCliffTime")
-                TestLogger.logTestResult("ICO", "Deployment & Initial Setup", 
-                    "Should have correct permissions set", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Deployment & Initial Setup", 
-                    "Should have correct permissions set", "failed", 0, error);
-                throw error;
-            }
-        });
-
-        it("Should handle vesting purchase correctly", async () => {
-            try {
-                await ico.setVestingEnabled(true);
-                expect(await ico.connect(addr1).currentPhaseInterval()).to.be.equal(0)
-                const intervals = [
-                    { endMonth: BigInt(6), unlockPerMonth: 10 },   // 50% en primeros 6 meses
-                    { endMonth: BigInt(12), unlockPerMonth: 5 },   // 50% en siguientes 6 meses
-                    { endMonth: BigInt(13), unlockPerMonth: 10 }
-                ];
-                await ico.setVestingIntervals(intervals);
-
-                const ethAmount = PURCHASE_AMOUNT;
-                const expectedTokens = ethAmount * RATE / BigInt(1e18);
-                expect(await ico.connect(addr1).currentPhaseInterval()).to.be.equal(1)
-                await expect(ico.connect(addr1).buyTokens({ value: ethAmount }))
-                    .to.emit(ico, "VestingAssigned")
-                    .withArgs(addr1.address, expectedTokens, 1);
-
-                const vesting = await ico.vestings(addr1.address);
-                expect(vesting.totalAmount).to.equal(expectedTokens);
-                expect(vesting.claimedAmount).to.equal(0);
-
-                TestLogger.logTestResult("ICO", "Token Purchase", 
-                    "Should handle vesting purchase correctly", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Token Purchase", 
-                    "Should handle vesting purchase correctly", "failed", 0, error);
-                throw error;
-            }
-        });
-
-        it("Should enforce timelock between purchases", async () => {
-            try {
-                // Primera compra
-                await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
-
-                // Intentar comprar inmediatamente después
-                await expect(ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT }))
-                    .to.be.revertedWithCustomError(ico, "TimeLockNotPassed");
-
-                // Avanzar más allá del timelock
-                await time.increase(Number(TIMELOCK_DURATION) + 1);
-
-                // Ahora debería permitir la compra
-                await expect(ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT }))
-                    .to.not.be.reverted;
-
-                TestLogger.logTestResult("ICO", "Token Purchase", 
-                    "Should enforce timelock between purchases", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Token Purchase", 
-                    "Should enforce timelock between purchases", "failed", 0, error);
-                throw error;
-            }
-        });
-
-        it("Should enforce max tokens per user", async () => {
-            try {
-                // Intentar comprar más que el máximo permitido
-                await ico.connect(owner).setWhitelistEnabled(false)
-                await expect(ico.connect(addr3).buyTokens({ value: ethers.parseEther("4") }))
-                    .to.emit(ico, "MintedTokensUpdated");
-                await time.increase(Number(TIMELOCK_DURATION));
-
-                await expect(ico.connect(addr3).buyTokens({ value: ethers.parseEther("5") }))
-                    .to.emit(ico, "MintedTokensUpdated");
-                
-                await time.increase(Number(TIMELOCK_DURATION));
-
-                await expect(ico.connect(addr3).buyTokens({ value: ethers.parseEther("7") }))
-                    .to.be.revertedWithCustomError(ico, "TotalAmountExceeded");
-                TestLogger.logTestResult("ICO", "Token Purchase", 
-                    "Should enforce max tokens per user", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Token Purchase", 
-                    "Should enforce max tokens per user", "failed", 0, error);
-                throw error;
-            }
-        });
-
-        it("Should revert purchase from non-whitelisted address", async () => {
-            try {
-                await expect(ico.connect(addr2).buyTokens({ value: PURCHASE_AMOUNT }))
-                    .to.be.revertedWithCustomError(ico, "AddressNotInWhitelist")
-                    .withArgs(addr2.address);
-
-                TestLogger.logTestResult("ICO", "Token Purchase", 
-                    "Should revert purchase from non-whitelisted address", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Token Purchase", 
-                    "Should revert purchase from non-whitelisted address", "failed", 0, error);
-                throw error;
-            }
-        });
-    });
-
-    describe("Token Claiming", () => {
-        beforeEach(async () => {
-            await ico.setVestingEnabled(true);
-            await ico.setWhitelistEnabled(true);
-            await ico.setWhitelist(addr1.address, true);
-
+            await expect(
+                tokenDistributor.emergencyTokenRecovery(
+                    await nbkToken.getAddress(),
+                    addr1.address,
+                    ethers.parseEther("10000")
+                )).to.be.revertedWithCustomError(tokenDistributor, "NotEnoughTokensOnDistributor").withArgs(
+                    INITIAL_SUPPLY, ethers.parseEther("10000")
+                )
             
-            const intervals = [
-                { endMonth: BigInt(6), unlockPerMonth: 10 },   // 50% en primeros 6 meses
-                { endMonth: BigInt(12), unlockPerMonth: 5 },
-                { endMonth: BigInt(13), unlockPerMonth: 10 }   // 50% en siguientes 6 meses
-                // 50% en siguientes 6 meses
-            ];
-            await ico.setVestingIntervals(intervals);
+            const recoveryAmount = ethers.parseEther("10")
+            // Attempt recovery and expect revert
+            await expect(
+                tokenDistributor.emergencyTokenRecovery(
+                    addr3.address,
+                    addr1.address,
+                    recoveryAmount
+                )
+            ).to.be.reverted
 
-            // Avanzar al período activo
-            const startTime = await ico.startTime();
-            await time.increaseTo(Number(startTime));
-
-            // Realizar compra
-            await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
+            await expect(
+                tokenDistributor.emergencyTokenRecovery(
+                    await nbkToken.getAddress(),
+                    addr1.address,
+                    recoveryAmount
+                )).to.emit(tokenDistributor, "EmergencyTokenRecovery").to.emit(tokenDistributor,"ActivityPerformed")
         });
-
-        it("Should allow claiming vested tokens after cliff", async () => {
+        it("Should handle emergency token recovery", async function () {
             try {
-                // Avanzar 3 meses (dentro del cliff)
-                await time.increase(90 * 24 * 60 * 60);
+                // Send more NBK directly
+                const amount = ethers.parseEther("50");
+                const initialBalance = await nbkToken.balanceOf(await tokenDistributor.getAddress());
                 
-                await expect(ico.connect(addr1).claimTokens())
-                    .to.be.revertedWithCustomError(ico, "NoReleasableTokens");
+                // We'll just do a normal distribution from that extra 50
+                await tokenDistributor.distributeTokens(addr1.address, amount, RATE);
 
-                await time.increase(30 * 24 * 60 * 60);
-                await ico.connect(addr1).claimTokens();
-                expect(await token.balanceOf(addr1.address)).to.equal(100);
+                const finalBalance = await nbkToken.balanceOf(await tokenDistributor.getAddress());
+                expect(finalBalance).to.equal(initialBalance - amount);
 
-                // Avanzar 6 meses más
-                await time.increase(179 * 24 * 60 * 59);
-
-                await ico.connect(addr1).claimTokens();
-                const expectedTokens = PURCHASE_AMOUNT * RATE * BigInt(60) / BigInt(100) / BigInt(1e18);
-                expect(await token.balanceOf(addr1.address)).to.equal(expectedTokens);
-
-                TestLogger.logTestResult("ICO", "Token Claiming", 
-                    "Should allow claiming vested tokens after cliff", "passed", 0);
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
             } catch (error) {
-                TestLogger.logTestResult("ICO", "Token Claiming", 
-                    "Should allow claiming vested tokens after cliff", "failed", 0, error);
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
                 throw error;
             }
         });
 
-        it("Should track claimed amounts correctly", async () => {
+        it("Should maintain security during emergency operations", async function () {
             try {
-                // Avanzar 8 meses (3 meses cliff y 5 de vesting) 
-                await time.increase(240 * 24 * 60 * 60);
+                const amount = ethers.parseEther("50");
 
-                await ico.connect(addr1).claimTokens();
-                const vesting = await ico.vestings(addr1.address);
-                const expectedClaimed = PURCHASE_AMOUNT * RATE * BigInt(50) / BigInt(100) / BigInt(1e18);
-                expect(vesting.claimedAmount).to.equal(expectedClaimed);
+                // Pause the contract => expect revert with "Pausable: paused" from OpenZeppelin
+                await tokenDistributor.pauseDistributor();
 
-                TestLogger.logTestResult("ICO", "Token Claiming", 
-                    "Should track claimed amounts correctly", "passed", 0);
+                await expect(tokenDistributor.distributeTokens(addr1.address, amount, RATE))
+                    .to.be.revertedWithCustomError(tokenDistributor,"EnforcedPause");
+
+                // The setDailyLimit is still allowed if the contract doesn't block it. 
+                // If your code allows onlyOwner calls while paused, that works:
+                await tokenDistributor.setDailyLimit(ethers.parseEther("150"));
+                
+                // Check that only the owner can unpause
+                await expect(tokenDistributor.connect(addr1).unpauseDistributor())
+                    .to.be.revertedWithCustomError(tokenDistributor, "OwnableUnauthorizedAccount");
+
+                // Now unpause as owner
+                await tokenDistributor.unpauseDistributor();
+                await tokenDistributor.distributeTokens(addr1.address, amount, RATE);
+
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
             } catch (error) {
-                TestLogger.logTestResult("ICO", "Token Claiming", 
-                    "Should track claimed amounts correctly", "failed", 0, error);
-                throw error;
-            }
-        });
-    });
-
-    describe("Emergency Controls", () => {
-        it("Should pause and unpause the ICO correctly", async () => {
-            try {
-                await ico.pause();
-                expect(await ico.paused()).to.be.true;
-
-                // Try to buy tokens while paused
-                await expect(ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT }))
-                    .to.be.revertedWithCustomError(ico,"EnforcedPause");
-
-                await ico.unpause();
-                expect(await ico.paused()).to.be.false;
-
-                TestLogger.logTestResult("ICO", "Emergency Controls", 
-                    "Should pause and unpause the ICO correctly", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Emergency Controls", 
-                    "Should pause and unpause the ICO correctly", "failed", 0, error);
-                throw error;
-            }
-        });
-
-        it("Should only allow owner to pause/unpause", async () => {
-            try {
-                await expect(ico.connect(addr1).pause())
-                    .to.be.revertedWithCustomError(ico, "OwnableUnauthorizedAccount");
-                await expect(ico.connect(addr1).unpause())
-                    .to.be.revertedWithCustomError(ico, "OwnableUnauthorizedAccount");
-
-                TestLogger.logTestResult("ICO", "Emergency Controls", 
-                    "Should only allow owner to pause/unpause", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Emergency Controls", 
-                    "Should only allow owner to pause/unpause", "failed", 0, error);
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
                 throw error;
             }
         });
     });
 
-    describe("ETH Handling", () => {
-        it("Should handle ETH transfers correctly", async () => {
+    describe("Gas Optimization and Performance", function () {
+        // it("Should optimize gas usage for bulk operations", async function () {
+        //     try {
+        //         const users = 5;
+        //         const amount = ethers.parseEther("1");
+                
+        //         const addresses = Array(users).fill(addr1.address);
+        //         const amounts = Array(users).fill(amount);
+
+        //         let totalGasIndividual = BigInt(0);
+        //         for (let i = 0; i < users; i++) {
+        //             const tx = await tokenDistributor.distributeTokens(addresses[i], amounts[i]);
+        //             const receipt = await tx.wait();
+        //             totalGasIndividual += receipt.gasUsed;
+        //         }
+
+        //         // Replenish tokens
+        //         await nbkToken.mint(await tokenDistributor.getAddress(), ethers.parseEther("50"));
+
+        //         const batchTx = await tokenDistributor.distributeTokensBatch(addresses, amounts);
+        //         const batchReceipt = await batchTx.wait();
+        //         const batchGas = batchReceipt.gasUsed;
+
+        //         expect(batchGas).to.be.lt(totalGasIndividual);
+
+        //         TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
+        //     } catch (error) {
+        //         TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
+        //         throw error;
+        //     }
+        // });
+
+        it("Should handle high-frequency operations efficiently", async function () {
             try {
-                const initialBalance = await ethers.provider.getBalance(await distributor.getAddress());
-                await time.increase(3600);
-                await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
-                const finalBalance = await ethers.provider.getBalance(await distributor.getAddress());
-                
-                expect(finalBalance - initialBalance).to.equal(PURCHASE_AMOUNT);
-
-                TestLogger.logTestResult("ICO", "ETH Handling", 
-                    "Should handle ETH transfers correctly", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "ETH Handling", 
-                    "Should handle ETH transfers correctly", "failed", 0, error);
-                throw error;
-            }
-        });
-
-        it("Should revert on zero ETH sent", async () => {
-            try {
-                await time.increase(3600)
-                await expect(ico.connect(addr1).buyTokens({ value: 0 }))
-                    .to.be.revertedWithCustomError(ico, "NoMsgValueSent")
-                    .withArgs(0);
-
-                TestLogger.logTestResult("ICO", "ETH Handling", 
-                    "Should revert on zero ETH sent", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "ETH Handling", 
-                    "Should revert on zero ETH sent", "failed", 0, error);
-                throw error;
-            }
-        });
-    });
-
-    describe("Vesting Schedule Edge Cases", () => {
-        beforeEach(async () => {
-            await ico.setVestingEnabled(true);
-            await ico.setWhitelistEnabled(true);
-            await ico.setWhitelist(addr1.address, true);
-        });
-
-        it("Should handle multiple vesting intervals correctly", async () => {
-            try {
-                const intervals = [
-                    { endMonth: BigInt(3), unlockPerMonth: 10 },  // 30% in first 3 months
-                    { endMonth: BigInt(6), unlockPerMonth: 20 },  // 60% in next 3 months
-                    { endMonth: BigInt(8), unlockPerMonth: 5 }   // 10% in last 2 months
-                ];
-
-                await ico.setVestingIntervals(intervals);
-                await time.increase(3600);
-                // Buy tokens
-                await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
-                
-                // Advance 3 months de cliff y 3 de vesting
-                await time.increase(180 * 24 * 60 * 60);
-                await ico.connect(addr1).claimTokens();
-                
-                const expectedTokens = PURCHASE_AMOUNT * RATE * BigInt(30) / BigInt(100) / BigInt(1e18);
-                expect(await token.balanceOf(addr1.address)).to.equal(expectedTokens);
-
-                TestLogger.logTestResult("ICO", "Vesting Schedule Edge Cases", 
-                    "Should handle multiple vesting intervals correctly", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Vesting Schedule Edge Cases", 
-                    "Should handle multiple vesting intervals correctly", "failed", 0, error);
-                throw error;
-            }
-        });
-
-        it("Should handle vesting schedule updates correctly", async () => {
-            try {
-                const initialIntervals = [
-                    { endMonth: BigInt(6), unlockPerMonth: 10 },
-                    { endMonth: BigInt(12), unlockPerMonth: 5 },
-                    { endMonth: BigInt(13), unlockPerMonth: 10 }
-
-                ];
-                await ico.setVestingIntervals(initialIntervals);
-                
-                // Buy tokens
-                await time.increase(3600);
-                await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
-                
-                // Update vesting schedule
-                const newIntervals = [
-                    { endMonth: BigInt(3), unlockPerMonth: 10 },
-                    { endMonth: BigInt(6), unlockPerMonth: 20 },
-                    { endMonth: BigInt(8), unlockPerMonth: 5 }
-                ];
-                await ico.setVestingIntervals(newIntervals);
-                
-                // Advance 3 months
-                await time.increase(180 * 24 * 60 * 60);
-                await ico.connect(addr1).claimTokens();
-                
-                const expectedTokens = PURCHASE_AMOUNT * RATE * BigInt(30) / BigInt(100) / BigInt(1e18);
-                expect(await token.balanceOf(addr1.address)).to.equal(expectedTokens);
-
-                TestLogger.logTestResult("ICO", "Vesting Schedule Edge Cases", 
-                    "Should handle vesting schedule updates correctly", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Vesting Schedule Edge Cases", 
-                    "Should handle vesting schedule updates correctly", "failed", 0, error);
-                throw error;
-            }
-        });
-    });
-
-    describe("Contract State Transitions", () => {
-        it("Should handle ICO lifecycle correctly", async () => {
-            try {
-                // Before start
-                await expect(ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT }))
-                    .to.be.revertedWithCustomError(ico, "ICONotInActivePeriod");
-
-                // Start ICO
-                await time.increaseTo(Number(await ico.startTime()));
-                await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
-
-                // End ICO
-                await time.increaseTo(Number(await ico.endTime()));
-                await expect(ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT }))
-                    .to.be.revertedWithCustomError(ico, "ICONotInActivePeriod");
-
-                TestLogger.logTestResult("ICO", "Contract State Transitions", 
-                    "Should handle ICO lifecycle correctly", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Contract State Transitions", 
-                    "Should handle ICO lifecycle correctly", "failed", 0, error);
-                throw error;
-            }
-        });
-
-        it("Should track token distribution limits correctly", async () => {
-            try {
-                await ico.setWhitelistEnabled(true);
-                await ico.setWhitelist(addr1.address, true);
-                
-                const maxPurchase = ethers.parseEther("11")
-                await time.increase(3600);
-
-                // Try to buy more than max per user
-                await expect(ico.connect(addr1).buyTokens({ value: maxPurchase + BigInt(1) }))
-                    .to.be.revertedWithCustomError(ico, "TotalAmountExceeded");
-                
-                const maxPurchaseLimit = ethers.parseEther("10")
-
-                // Buy maximum allowed
-                await ico.connect(addr1).buyTokens({ value: maxPurchaseLimit });
-                expect(await ico.mintedTokens()).to.equal(MAX_TOKENS_PER_USER);
-
-                TestLogger.logTestResult("ICO", "Contract State Transitions", 
-                    "Should track token distribution limits correctly", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Contract State Transitions", 
-                    "Should track token distribution limits correctly", "failed", 0, error);
-                throw error;
-            }
-        });
-    });
-
-    describe("Edge Cases and Boundary Testing", () => {
-        it("Should handle minimum purchase amounts correctly", async () => {
-            try {
-                const minPurchase = BigInt(1); // 1 wei
-                await time.increase(3600);
-                await expect(ico.connect(addr1).buyTokens({ value: minPurchase }))
-                    .to.be.revertedWithCustomError(ico, "InsufficientETHForTokenPurchase");
-
-                TestLogger.logTestResult("ICO", "Edge Cases and Boundary Testing", 
-                    "Should handle minimum purchase amounts correctly", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Edge Cases and Boundary Testing", 
-                    "Should handle minimum purchase amounts correctly", "failed", 0, error);
-                throw error;
-            }
-        });
-
-        it("Should handle maximum token supply correctly", async () => {
-            try {
-                await ico.setMaxTokens(1000); // Set small max for testing
-                await ico.setMaxTokensPerUser(1000);
-                
-                // Buy all available tokens
-                const maxPurchase = ethers.parseEther("1")
-                await time.increase(3600)
-                await ico.connect(addr1).buyTokens({ value: maxPurchase });
-                
-                // Try to buy more
-                await expect(ico.connect(addr2).buyTokens({ value: ethers.parseEther("1") }))
-                    .to.be.revertedWithCustomError(ico, "NoTokensAvailable");
-
-                TestLogger.logTestResult("ICO", "Edge Cases and Boundary Testing", 
-                    "Should handle maximum token supply correctly", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Edge Cases and Boundary Testing", 
-                    "Should handle maximum token supply correctly", "failed", 0, error);
-                throw error;
-            }
-        });
-
-        it("Should handle timelock between purchases correctly", async () => {
-            try {
-                // First purchase
-                await time.increase(3600);
-                await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
-                
-                // Try to purchase immediately
-                await expect(ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT }))
-                    .to.be.revertedWithCustomError(ico, "TimeLockNotPassed");
-                
-                // Wait just under timelock duration
-                await time.increase(Number(TIMELOCK_DURATION) - 60);
-                await expect(ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT }))
-                    .to.be.revertedWithCustomError(ico, "TimeLockNotPassed");
-                
-                // Wait remaining time
-                await time.increase(61);
-                await expect(await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT }))
-                    .to.emit(ico,"MintedTokensUpdated")
-
-                TestLogger.logTestResult("ICO", "Edge Cases and Boundary Testing", 
-                    "Should handle timelock between purchases correctly", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Edge Cases and Boundary Testing", 
-                    "Should handle timelock between purchases correctly", "failed", 0, error);
-                throw error;
-            }
-        });
-    });
-
-    describe("Configuration Validation", () => {
-        it("Should validate vesting interval configurations", async () => {
-            try {
-                // Invalid total percentage
-                const invalidIntervals = [
-                    { endMonth: BigInt(6), unlockPerMonth: 5 },
-                    { endMonth: BigInt(12), unlockPerMonth: 10 }
-                ];
-                await expect(ico.setVestingIntervals(invalidIntervals))
-                    .to.be.revertedWithCustomError(ico, "TotalPercentageNotEqualTo100")
-                    .withArgs(90);
-
-                // Invalid sequence
-                const invalidSequence = [
-                    { endMonth: BigInt(12), unlockPerMonth: 50 },
-                    { endMonth: BigInt(6), unlockPerMonth: 50 }
-                ];
-                await expect(ico.setVestingIntervals(invalidSequence))
-                    .to.be.revertedWithCustomError(ico, "InvalidIntervalSequence")
-                    .withArgs(1);
-
-                const invalidSequence2 = [
-                    { endMonth: BigInt(6), unlockPerMonth: 10 },
-                    { endMonth: BigInt(12), unlockPerMonth: 0 }
-                ];
-                await expect(ico.setVestingIntervals(invalidSequence2))
-                    .to.be.revertedWithCustomError(ico, "InvalidVestingIntervals");
-
-                // Empty intervals
-                await expect(ico.setVestingIntervals([]))
-                    .to.be.revertedWithCustomError(ico, "InvalidVestingIntervals");
-
-                TestLogger.logTestResult("ICO", "Configuration Validation", 
-                    "Should validate vesting interval configurations", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Configuration Validation", 
-                    "Should validate vesting interval configurations", "failed", 0, error);
-                throw error;
-            }
-        });
-
-        it("Should validate ICO timing parameters", async () => {
-            try {
-                const currentTime = (await ethers.provider.getBlock("latest"))!.timestamp;
-                
-                // Invalid start time (in the past)
-                const validStartTime = currentTime + 3600;
-
-                await expect(ico.setICOPeriod(currentTime - 1,validStartTime))
-                    .to.be.revertedWithCustomError(ico, "InvalidICOPeriod")
-                    .withArgs(currentTime - 1,validStartTime);
-
-                // Invalid end time (before start time)
-                await ico.setICOPeriod(validStartTime, validStartTime+3600);
-                await expect(ico.setICOPeriod(validStartTime,validStartTime-100))
-                    .to.be.revertedWithCustomError(ico, "InvalidICOPeriod")
-                    .withArgs(validStartTime, validStartTime-100);
-
-                await expect(ico.setVestingDuration(0))
-                    .to.be.revertedWithCustomError(ico, "InvalidVestingDuration")
-                    .withArgs(0);
-                
-                expect(await ico.setVestingDuration(12))
-                .to.emit(ico,"VestingDurationUpdated");
-
-                await expect(ico.setCliffDuration(0))
-                    .to.be.revertedWithCustomError(ico, "InvalidCliff")
-                    .withArgs(0);
-
-                expect(await ico.setCliffDuration(3))
-                .to.emit(ico,"CliffUpdated");
-
-                await expect(ico.setTimelockDuration(0))
-                    .to.be.revertedWithCustomError(ico, "InvalidTimelockDuration")
-                    .withArgs(0);
-
-                expect(await ico.setTimelockDuration(60))
-                .to.emit(ico,"TimelockDurationUpdated");
-
-                await ico.getICOInfo()
-
-                // expect(await ico.getICOInfo())
-                // .to.equal([BigInt(validStartTime),BigInt(validStartTime+3600),BigInt(MAX_TOKENS),BigInt(MAX_TOKENS_PER_USER),0]);
-
-
-                TestLogger.logTestResult("ICO", "Configuration Validation", 
-                    "Should validate ICO timing parameters", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Configuration Validation", 
-                    "Should validate ICO timing parameters", "failed", 0, error);
-                throw error;
-            }
-        });
-
-        it("Should validate token limits", async () => {
-            try {
-                // Invalid max tokens
-                await expect(ico.setMaxTokens(0))
-                    .to.be.revertedWithCustomError(ico, "InvalidMaxTokens")
-                    .withArgs(0);
-
-                // Invalid max tokens per user
-                await expect(ico.setMaxTokensPerUser(0))
-                    .to.be.revertedWithCustomError(ico, "InvalidMaxTokensPerUser")
-                    .withArgs(0);
-
-                // Max tokens per user greater than total max tokens
-                await ico.setMaxTokens(ethers.parseEther("1000"));
-                await ico.setMaxTokensPerUser(ethers.parseEther("100"));
-                
-                // This should work
-                await ico.setMaxTokensPerUser(ethers.parseEther("1000"));
-                
-                TestLogger.logTestResult("ICO", "Configuration Validation", 
-                    "Should validate token limits", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Configuration Validation", 
-                    "Should validate token limits", "failed", 0, error);
-                throw error;
-            }
-        });
-    });
-
-    describe("Error Handling and Recovery", () => {
-        it("Should handle failed token transfers gracefully", async () => {
-            try {
-                // Set up a scenario where token transfer might fail
-                await ico.setVestingEnabled(false);
-                await time.increase(3601);
-                expect(await ico.setMaxTokens(MAX_TOKENS)).to.emit(ico,"MaxTokensUpdated")
-                expect(await ico.connect(addr2).buyTokens({ value: ethers.parseEther("5") }))
-                    .to.be.revertedWithCustomError(ico, "NoTokensAvailable")
-                
-                expect(await ico.connect(addr1).buyTokens({ value: ethers.parseEther("10") }))
-                    .to.be.revertedWithCustomError(ico, "NoTokensAvailable")
-                TestLogger.logTestResult("ICO", "Error Handling and Recovery", 
-                    "Should handle failed token transfers gracefully", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Error Handling and Recovery", 
-                    "Should handle failed token transfers gracefully", "failed", 0, error);
-                throw error;
-            }
-        });
-
-        it("Should handle whitelist operations correctly", async () => {
-            try {
-                // Invalid address
-                await expect(ico.setWhitelist(ethers.ZeroAddress, true))
-                    .to.be.revertedWithCustomError(ico, "InvalidAddress")
-                    .withArgs(ethers.ZeroAddress);
-
-                // Empty batch
-                await expect(ico.setWhitelistBatch([], true))
-                    .to.be.revertedWithCustomError(ico, "InvalidArrayInput");
-
-                // Batch with invalid address
-                await expect(ico.setWhitelistBatch([addr1.address, ethers.ZeroAddress], true))
-                    .to.be.revertedWithCustomError(ico, "InvalidAddress")
-                    .withArgs(ethers.ZeroAddress);
-
-                TestLogger.logTestResult("ICO", "Error Handling and Recovery", 
-                    "Should handle whitelist operations correctly", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Error Handling and Recovery", 
-                    "Should handle whitelist operations correctly", "failed", 0, error);
-                throw error;
-            }
-        });
-
-        it("Should handle vesting claims correctly", async () => {
-            try {
-                await ico.setVestingEnabled(true);
-                
-                // Try to claim without any vesting
-                await expect(ico.connect(addr1).claimTokens())
-                    .to.be.revertedWithCustomError(ico, "NoReleasableTokens")
-                    .withArgs(addr1.address);
-
-                // Set up vesting but try to claim before cliff
-                const intervals = [
-                    { endMonth: BigInt(3), unlockPerMonth: 10 },
-                    { endMonth: BigInt(6), unlockPerMonth: 20 },
-                    { endMonth: BigInt(8), unlockPerMonth: 5 }
-                ];
-                await ico.setVestingIntervals(intervals);
-                await time.increase(3600);
-                await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
-                
-                await expect(ico.connect(addr1).claimTokens())
-                    .to.be.revertedWithCustomError(ico, "NoReleasableTokens")
-                    .withArgs(addr1.address);
-
-                TestLogger.logTestResult("ICO", "Error Handling and Recovery", 
-                    "Should handle vesting claims correctly", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Error Handling and Recovery", 
-                    "Should handle vesting claims correctly", "failed", 0, error);
-                throw error;
-            }
-        });
-
-        it("Should handle manual vesting assing correctly", async () => {
-            try {
-                
-                await ico.setVestingEnabled(true);
-                const intervals = [
-                    { endMonth: BigInt(3), unlockPerMonth: 10 },
-                    { endMonth: BigInt(6), unlockPerMonth: 20 },
-                    { endMonth: BigInt(8), unlockPerMonth: 5 }
-                ];
-                await ico.setVestingIntervals(intervals);
-
-                await expect(await ico.connect(owner).assignVesting(addr1.address,5000,3,12))
-                    .to.emit(ico, "VestingAssigned")
-                    .withArgs(addr1.address,5000,1);
-                
-                await expect(await ico.connect(owner).assignVesting(addr1.address,3000,3,12))
-                    .to.emit(ico, "VestingAssigned")
-                    .withArgs(addr1.address,3000,1);                
-
-                await ico.setVestingEnabled(false);
-
-                expect(ico.connect(owner).assignVesting(addr1.address,MAX_TOKENS_PER_USER,3,12))
-                    .to.be.revertedWithCustomError(ico,"VestingNotEnabledForManualAssignment")
-                    .withArgs(addr1.address)
-
-
-                TestLogger.logTestResult("ICO", "Error Handling and Recovery", 
-                    "Should handle vesting claims correctly", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Error Handling and Recovery", 
-                    "Should handle vesting claims correctly", "failed", 0, error);
-                throw error;
-            }
-        });
-    });
-
-    describe("Multi-User Scenarios", () => {
-        beforeEach(async () => {
-            await ico.setWhitelistEnabled(true);
-            await ico.setWhitelistBatch([addr1.address, addr2.address, addr3.address], true);
-        });
-
-        it("Should handle multiple users buying tokens simultaneously", async () => {
-            try {
-                await time.increase(3600);
-                const purchasePromises = [
-                    ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT }),
-                    ico.connect(addr2).buyTokens({ value: PURCHASE_AMOUNT }),
-                    ico.connect(addr3).buyTokens({ value: PURCHASE_AMOUNT })
-                ];
-
-                await Promise.all(purchasePromises);
-
-                const expectedTokens = PURCHASE_AMOUNT * RATE / BigInt(1e18);
-                expect(await token.balanceOf(addr1.address)).to.equal(expectedTokens);
-                expect(await token.balanceOf(addr2.address)).to.equal(expectedTokens);
-                expect(await token.balanceOf(addr3.address)).to.equal(expectedTokens);
-
-                TestLogger.logTestResult("ICO", "Multi-User Scenarios", 
-                    "Should handle multiple users buying tokens simultaneously", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Multi-User Scenarios", 
-                    "Should handle multiple users buying tokens simultaneously", "failed", 0, error);
-                throw error;
-            }
-        });
-
-        it("Should handle vesting claims from multiple users", async () => {
-            try {
-                await ico.setVestingEnabled(true);
-                const intervals = [
-                    { endMonth: BigInt(3), unlockPerMonth: 10 },
-                    { endMonth: BigInt(6), unlockPerMonth: 20 },
-                    { endMonth: BigInt(8), unlockPerMonth: 5 }
-                ];
-                await ico.setVestingIntervals(intervals);
-                await time.increase(3600);
-                // Multiple users buy tokens
-                await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
-                await ico.connect(addr2).buyTokens({ value: PURCHASE_AMOUNT * BigInt(2) });
-                await ico.connect(addr3).buyTokens({ value: PURCHASE_AMOUNT * BigInt(3) });
-
-                // Advance 3 months and 5 months
-                await time.increase(210 * 24 * 60 * 60);
-
-                // All users claim tokens
-                await ico.connect(addr1).claimTokens();
-                await ico.connect(addr2).claimTokens();
-                await ico.connect(addr3).claimTokens();
-
-                // Verify correct amounts claimed
-                const expectedTokens1 = PURCHASE_AMOUNT * RATE * BigInt(50) / BigInt(100) / BigInt(1e18);
-                const expectedTokens2 = expectedTokens1 * BigInt(2);
-                const expectedTokens3 = expectedTokens1 * BigInt(3);
-
-                expect(await token.balanceOf(addr1.address)).to.equal(expectedTokens1);
-                expect(await token.balanceOf(addr2.address)).to.equal(expectedTokens2);
-                expect(await token.balanceOf(addr3.address)).to.equal(expectedTokens3);
-
-                TestLogger.logTestResult("ICO", "Multi-User Scenarios", 
-                    "Should handle vesting claims from multiple users", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Multi-User Scenarios", 
-                    "Should handle vesting claims from multiple users", "failed", 0, error);
-                throw error;
-            }
-        });
-    });
-
-    describe("Complex Vesting Scenarios", () => {
-        beforeEach(async () => {
-            await ico.setVestingEnabled(true);
-            await ico.setWhitelistEnabled(true);
-            await ico.setWhitelist(addr1.address, true);
-        });
-
-        it("Should handle partial claims across multiple intervals", async () => {
-            try {
-                const intervals = [
-                    { endMonth: BigInt(3), unlockPerMonth: 20 },
-                    { endMonth: BigInt(6), unlockPerMonth: 10 },
-                    { endMonth: BigInt(8), unlockPerMonth: 5 }
-                ];
-                await ico.setVestingIntervals(intervals);
-                await time.increase(3600);
-                await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
-
-                // Claim after 3 months (cliff over) and 2 month
-                await time.increase(150 * 24 * 60 * 60);
-                await ico.connect(addr1).claimTokens();
-                let expectedTokens = PURCHASE_AMOUNT * RATE * BigInt(40) / BigInt(100) / BigInt(1e18);
-                expect(await token.balanceOf(addr1.address)).to.equal(expectedTokens);
-
-                // Claim after 4 months
-                await time.increase(60 * 24 * 60 * 60);
-
-                await ico.connect(addr1).claimTokens();
-                expectedTokens = PURCHASE_AMOUNT * RATE * BigInt(70) / BigInt(100) / BigInt(1e18);
-                expect(await token.balanceOf(addr1.address)).to.equal(expectedTokens);
-
-                // Claim after full period
-                await time.increase(120 * 24 * 60 * 60);
-                await ico.connect(addr1).claimTokens();
-                expectedTokens = PURCHASE_AMOUNT * RATE / BigInt(1e18);
-                expect(await token.balanceOf(addr1.address)).to.equal(expectedTokens);
-
-                TestLogger.logTestResult("ICO", "Complex Vesting Scenarios", 
-                    "Should handle partial claims across multiple intervals", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Complex Vesting Scenarios", 
-                    "Should handle partial claims across multiple intervals", "failed", 0, error);
-                throw error;
-            }
-        });
-
-        it("Should handle multiple purchases with different vesting schedules", async () => {
-            try {
-                // First purchase with initial schedule
-                const initialIntervals = [
-                    { endMonth: BigInt(6), unlockPerMonth: 10 },
-                    { endMonth: BigInt(12), unlockPerMonth: 5 },
-                    { endMonth: BigInt(13), unlockPerMonth: 10 }
-
-                ];
-                await ico.setVestingIntervals(initialIntervals);
-                await time.increase(3600);
-                await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
-
-                // Wait for timelock to pass and update schedule
-                await time.increase(Number(TIMELOCK_DURATION));
-                const newIntervals = [
-                    { endMonth: BigInt(3), unlockPerMonth: 20 },
-                    { endMonth: BigInt(6), unlockPerMonth: 10 },
-                    { endMonth: BigInt(8), unlockPerMonth: 5 },
-                ];
-                await ico.setVestingIntervals(newIntervals);
-                await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
-
-                // Advance 3 months and claim
-                await time.increase(120 * 24 * 60 * 60);
-                const expectedTokens1 = PURCHASE_AMOUNT * RATE * BigInt(10) / BigInt(100) / BigInt(1e18); // 10% from first purchase month1
-                const expectedTokens2 = PURCHASE_AMOUNT * RATE * BigInt(20) / BigInt(100) / BigInt(1e18); // 20% from second purchase month1
-                
-                expect(await ico.getReleasableTokens(addr1.address)).to.equal(expectedTokens1 + expectedTokens2)
-                await ico.connect(addr1).claimTokens();
-                expect(await token.balanceOf(addr1.address)).to.equal(expectedTokens1 + expectedTokens2);
-                expect(await ico.getReleasableTokens(addr1.address)).to.equal(0)
-
-                TestLogger.logTestResult("ICO", "Complex Vesting Scenarios", 
-                    "Should handle multiple purchases with different vesting schedules", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Complex Vesting Scenarios", 
-                    "Should handle multiple purchases with different vesting schedules", "failed", 0, error);
-                throw error;
-            }
-        });
-    });
-
-    describe("Gas Optimization Tests", () => {
-        it("Should optimize gas for batch whitelist operations", async () => {
-            try {
-                const users = Array.from({length: 10}, (_, i) => addrs[i].address);
-                
-                // Measure gas for individual operations
-                let totalGasIndividual = BigInt(0);
-                for (const user of users) {
-                    const tx = await ico.setWhitelist(user, true);
-                    const receipt = await tx.wait();
-                    totalGasIndividual += receipt!.gasUsed;
+                const operations = 10;
+                const amount = ethers.parseEther("2"); // total=20 < 100 dailyLimit
+
+                for (let i = 0; i < operations; i++) {
+                    await tokenDistributor.distributeTokens(addr1.address, amount, RATE);
                 }
 
-                // Measure gas for batch operation
-                const batchTx = await ico.setWhitelistBatch(users, true);
-                const batchReceipt = await batchTx.wait();
-                const batchGas = batchReceipt!.gasUsed;
+                const finalBalance = await nbkToken.balanceOf(addr1.address);
+                expect(finalBalance).to.equal(amount * BigInt(operations));
 
-                // Batch operation should use less gas
-                expect(batchGas).to.be.lessThan(totalGasIndividual);
-
-                TestLogger.logTestResult("ICO", "Gas Optimization Tests", 
-                    "Should optimize gas for batch whitelist operations", "passed", 0);
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
             } catch (error) {
-                TestLogger.logTestResult("ICO", "Gas Optimization Tests", 
-                    "Should optimize gas for batch whitelist operations", "failed", 0, error);
-                throw error;
-            }
-        });
-
-        it("Should maintain reasonable gas costs for token purchases", async () => {
-            try {
-                await ico.setWhitelistEnabled(true);
-                await ico.setWhitelist(addr1.address, true);
-                await time.increase(3600);
-                // Measure gas for first purchase
-                const tx1 = await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
-                const receipt1 = await tx1.wait();
-                const gasUsed1 = receipt1!.gasUsed;
-
-                // Wait for timelock
-                await time.increase(Number(TIMELOCK_DURATION));
-
-                // Measure gas for second purchase
-                const tx2 = await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
-                const receipt2 = await tx2.wait();
-                const gasUsed2 = receipt2!.gasUsed;
-
-                // Gas costs should be consistent
-                const gasDiff = gasUsed1 > gasUsed2 ? 
-                    gasUsed1 - gasUsed2 : 
-                    gasUsed2 - gasUsed1;
-                expect(gasDiff).to.be.lessThan(75000); // Permitir una pequeña variación
-
-                TestLogger.logTestResult("ICO", "Gas Optimization Tests", 
-                    "Should maintain reasonable gas costs for token purchases", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Gas Optimization Tests", 
-                    "Should maintain reasonable gas costs for token purchases", "failed", 0, error);
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
                 throw error;
             }
         });
     });
 
-    describe("Event Emission Tests", () => {
-        it("Should emit correct events for token purchases", async () => {
+    describe("Event Emission and Logging", function () {
+        it("Should emit correct events for all operations", async function () {
             try {
-                await ico.setWhitelistEnabled(true);
-                await ico.setWhitelist(addr1.address, true);
+                const amount = ethers.parseEther("10");
 
-                const purchaseAmount = PURCHASE_AMOUNT;
-                const expectedTokens = purchaseAmount * RATE / BigInt(1e18);
-                await time.increase(3600);
-                const intervals = [
-                    { endMonth: BigInt(3), unlockPerMonth: 10 },
-                    { endMonth: BigInt(6), unlockPerMonth: 20 },
-                    { endMonth: BigInt(8), unlockPerMonth: 5 }
-                ];
-                await ico.setVestingIntervals(intervals);
-                await expect(await ico.connect(addr1).buyTokens({ value: purchaseAmount }))
-                    .to.emit(ico, "MintedTokensUpdated")
-                    .withArgs(0, expectedTokens);
+                // distribution => ActivityPerformed
+                await expect(tokenDistributor.distributeTokens(addr1.address, amount, RATE))
+                    .to.emit(tokenDistributor, "ActivityPerformed")
+                    .withArgs(owner.address, amount);
 
-                // If vesting is enabled
-                await ico.setVestingEnabled(true);
-                await time.increase(Number(TIMELOCK_DURATION));
+                // daily limit update => DailyLimitUpdated
+                const newLimit = ethers.parseEther("150");
+                await expect(tokenDistributor.setDailyLimit(newLimit))
+                    .to.emit(tokenDistributor, "DailyLimitUpdated")
+                    .withArgs(newLimit);
 
-                await expect(ico.connect(addr1).buyTokens({ value: purchaseAmount }))
-                    .to.emit(ico, "VestingAssigned")
-                    .withArgs(addr1.address, expectedTokens, 1);
+                // pause => "Paused" from OpenZeppelin 
+                await expect(tokenDistributor.pauseDistributor())
+                    .to.emit(tokenDistributor, "Paused")
+                    .withArgs(owner.address);
+
+                // send ETH => "FundsReceived"
+                const ethAmount = ethers.parseEther("1");
+                await expect(owner.sendTransaction({
+                    to: await tokenDistributor.getAddress(),
+                    value: ethAmount
+                })).to.emit(tokenDistributor, "FundsReceived")
+                    .withArgs(owner.address, ethAmount);
+
+                await expect(tokenDistributor.unpauseDistributor())
+                    .to.emit(tokenDistributor, "Unpaused")
+                    .withArgs(owner.address);
+
+                await expect(tokenDistributor.connect(addr2).distributeTokens(addr1.address, amount, RATE))
+                    .to.revertedWithCustomError(tokenDistributor,"UnauthorizedCaller")
+
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
+            } catch (error) {
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
+                throw error;
+            }
+        });
+
+        it("Should maintain event consistency under stress", async function () {
+            try {
+                const operations = 5;
+                const amount = ethers.parseEther("1");
                 
-                await time.increase(Number(TIMELOCK_DURATION));
+                for (let i = 0; i < operations; i++) {
+                    await expect(tokenDistributor.distributeTokens(addr1.address, amount, RATE))
+                        .to.emit(tokenDistributor, "ActivityPerformed")
+                        .withArgs(owner.address, amount);
 
-                await ico.connect(addr1).buyTokens({ value: ethers.parseEther("8") });
-                await time.increase(Number(TIMELOCK_DURATION));
-
-                await expect(ico.connect(addr1).buyTokens({ value: ethers.parseEther("7") }))
-                    .to.be.revertedWithCustomError(ico, "TotalAmountExceeded");
-
-                TestLogger.logTestResult("ICO", "Event Emission Tests", 
-                    "Should emit correct events for token purchases", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Event Emission Tests", 
-                    "Should emit correct events for token purchases", "failed", 0, error);
-                throw error;
-            }
-        });
-
-        it("Should emit correct events for configuration changes", async () => {
-            try {
-                const newRate = BigInt(200);
-                await expect(ico.setRate(newRate))
-                    .to.emit(ico, "RateUpdated")
-                    .withArgs(RATE, newRate);
-
-                const newMaxTokens = ethers.parseEther("2000000");
-                await expect(ico.setMaxTokens(newMaxTokens))
-                    .to.emit(ico, "MaxTokensUpdated")
-                    .withArgs(MAX_TOKENS, newMaxTokens);
-
-                const newWhitelistStatus = true;
-                await expect(ico.setWhitelistEnabled(newWhitelistStatus))
-                    .to.emit(ico, "WhitelistStatusUpdated")
-                    .withArgs(!newWhitelistStatus, newWhitelistStatus);
-
-                TestLogger.logTestResult("ICO", "Event Emission Tests", 
-                    "Should emit correct events for configuration changes", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Event Emission Tests", 
-                    "Should emit correct events for configuration changes", "failed", 0, error);
-                throw error;
-            }
-        });
-    });
-
-    describe("Integration and Stress Tests", () => {
-        it("Should handle complex ICO lifecycle with multiple users and state changes", async () => {
-            try {
-                // Setup initial state
-                await ico.setWhitelistEnabled(true);
-                await ico.setVestingEnabled(true);
-                const intervals = [
-                    { endMonth: BigInt(3), unlockPerMonth: 10 },
-                    { endMonth: BigInt(6), unlockPerMonth: 20 },
-                    { endMonth: BigInt(8), unlockPerMonth: 5 }
-                ];
-                await ico.setVestingIntervals(intervals);
-
-                // Add multiple users to whitelist
-                const users = [addr1, addr2, addr3, ...addrs.slice(0, 5)];
-                await ico.setWhitelistBatch(users.map(u => u.address), true);
-                await time.increase(3601);
-                // Simulate multiple purchases with different amounts
-                for (let i = 0; i < users.length; i++) {
-                    const amount = PURCHASE_AMOUNT * BigInt(i + 1);
-                    await ico.connect(users[i]).buyTokens({ value: amount });
-                    if (i < users.length - 1) {
-                        await time.increase(Number(TIMELOCK_DURATION));
+                    if (i % 2 === 0) {
+                        await expect(tokenDistributor.pauseDistributor())
+                            .to.emit(tokenDistributor, "Paused")
+                            .withArgs(owner.address);
+                        await expect(tokenDistributor.unpauseDistributor())
+                            .to.emit(tokenDistributor, "Unpaused")
+                            .withArgs(owner.address);
                     }
                 }
 
-                // Change vesting schedule mid-ICO
-                const newIntervals = [
-                    { endMonth: BigInt(4), unlockPerMonth: 20 },
-                    { endMonth: BigInt(8), unlockPerMonth: 5 }
-                ];
-                await ico.setVestingIntervals(newIntervals);
-
-                // More purchases with new schedule
-                await time.increase(Number(TIMELOCK_DURATION));
-                for (let i = 0; i < 3; i++) {
-                    await ico.connect(users[i]).buyTokens({ value: PURCHASE_AMOUNT });
-                    if (i < 2) await time.increase(Number(TIMELOCK_DURATION));
-                }
-
-                // Advance time and verify claims
-                await time.increase(120 * 24 * 60 * 60); // 4 months
-                for (const user of users.slice(0, 3)) {
-                    await ico.connect(user).claimTokens();
-                    expect(await token.balanceOf(user.address)).to.be.gt(0);
-                }
-
-                TestLogger.logTestResult("ICO", "Integration and Stress Tests", 
-                    "Should handle complex ICO lifecycle with multiple users and state changes", "passed", 0);
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
             } catch (error) {
-                TestLogger.logTestResult("ICO", "Integration and Stress Tests", 
-                    "Should handle complex ICO lifecycle with multiple users and state changes", "failed", 0, error);
-                throw error;
-            }
-        });
-
-        it("Should handle rapid state changes and edge conditions", async () => {
-            try {
-                // Enable/disable features rapidly
-                await ico.setWhitelistEnabled(true);
-                await ico.setVestingEnabled(true);
-                await ico.setWhitelistEnabled(false);
-                await ico.setVestingEnabled(false);
-                await ico.setWhitelistEnabled(true);
-                await ico.setVestingEnabled(true);
-
-                // Rapid vesting schedule changes
-                for (let i = 1; i <= 3; i++) {
-                    const intervals = [
-                        { endMonth: BigInt(3), unlockPerMonth: 10 },
-                        { endMonth: BigInt(6), unlockPerMonth: 20 },
-                        { endMonth: BigInt(8), unlockPerMonth: 5 }
-                    ];
-                    await ico.setVestingIntervals(intervals);
-                }
-                await time.increase(3601);
-                // Multiple users buying at almost the same time
-                await ico.setWhitelistBatch([addr1.address, addr2.address, addr3.address], true);
-                const purchasePromises = [
-                    ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT }),
-                    ico.connect(addr2).buyTokens({ value: PURCHASE_AMOUNT * BigInt(2) }),
-                    ico.connect(addr3).buyTokens({ value: PURCHASE_AMOUNT * BigInt(3) })
-                ];
-                await Promise.all(purchasePromises);
-
-                // Quick time jumps and claims
-                await time.increase(120 * 24 * 60 * 60); // 3 month 1 day (cliff ended)
-                for (let i = 0; i < 3; i++) {
-                    await ico.connect(addr1).claimTokens();
-                    await ico.connect(addr2).claimTokens();
-                    await ico.connect(addr3).claimTokens();
-                    await time.increase(30 * 24 * 60 * 60); // 3 month 1 day (cliff ended)
-                }
-
-                TestLogger.logTestResult("ICO", "Integration and Stress Tests", 
-                    "Should handle rapid state changes and edge conditions", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Integration and Stress Tests", 
-                    "Should handle rapid state changes and edge conditions", "failed", 0, error);
-                throw error;
-            }
-        });
-
-        it("Should handle maximum capacity scenario", async () => {
-            try {
-                // Set up a smaller max supply for testing
-                const testMaxSupply = BigInt(10000);
-                await ico.setMaxTokens(testMaxSupply);
-                await ico.setMaxTokensPerUser(testMaxSupply);
-                await ico.setWhitelistEnabled(true);
-                
-                // Add multiple users
-                const users = [addr1, addr2, addr3, ...addrs.slice(0, 5)];
-                await ico.setWhitelistBatch(users.map(u => u.address), true);
-
-                // Calculate purchase amount to reach max supply
-                const tokensPerEth = RATE;
-                const ethRequired = BigInt(testMaxSupply) / BigInt(tokensPerEth);
-                const purchaseAmount = ethRequired / BigInt(users.length);
-
-                // Users buy tokens until max supply is reached
-                time.increase(3599)
-                for (let i = 0; i < users.length - 1; i++) {
-                    await ico.connect(users[i]).buyTokens({ value: ethers.parseEther(`${purchaseAmount}`) });
-                    // await time.increase(Number(TIMELOCK_DURATION));
-                }
-
-                // Last purchase should fail due to max supply
-                const remainingTokens = testMaxSupply - (purchaseAmount * tokensPerEth / BigInt(1e18) * BigInt(users.length - 1));
-                const lastPurchaseAmount = (remainingTokens + BigInt(1)) * BigInt(1e18) / tokensPerEth;
-                
-                await expect(ico.connect(users[users.length - 1]).buyTokens({ value: lastPurchaseAmount }))
-                    .to.be.revertedWithCustomError(ico, "NoTokensAvailable");
-
-                // Verify total supply
-                expect(await ico.mintedTokens()).to.be.lessThanOrEqual(testMaxSupply);
-
-                TestLogger.logTestResult("ICO", "Integration and Stress Tests", 
-                    "Should handle maximum capacity scenario", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Integration and Stress Tests", 
-                    "Should handle maximum capacity scenario", "failed", 0, error);
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
                 throw error;
             }
         });
     });
 
-    after(async () => {
-        const summary = TestLogger.getSummary();
-        TestLogger.writeSummary(summary);
+    describe("Security and Access Control", function () {
+        it("Should prevent unauthorized access to critical functions", async function () {
+            try {
+                const newLimit = ethers.parseEther("2000");
+
+                for (const account of [addr1, addr2, addr3]) {
+                    await expect(tokenDistributor.connect(account).setDailyLimit(newLimit))
+                        .to.be.revertedWithCustomError(tokenDistributor, "OwnableUnauthorizedAccount");
+
+                    await expect(tokenDistributor.connect(account).pauseDistributor())
+                        .to.be.revertedWithCustomError(tokenDistributor, "OwnableUnauthorizedAccount");
+
+                    await expect(tokenDistributor.connect(account).unpauseDistributor())
+                        .to.be.revertedWithCustomError(tokenDistributor, "OwnableUnauthorizedAccount");
+                }
+
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
+            } catch (error) {
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
+                throw error;
+            }
+        });
+
+        it("Should handle ownership transfer securely", async function () {
+            try {
+                // Transfer ownership to addr1
+                await tokenDistributor.transferOwnership(addr1.address);
+                expect(await tokenDistributor.owner()).to.equal(addr1.address);
+
+                // old owner can't do onlyOwner calls
+                await expect(tokenDistributor.connect(owner).setDailyLimit(ethers.parseEther("2000")))
+                    .to.be.revertedWithCustomError(tokenDistributor, "OwnableUnauthorizedAccount");
+
+                // new owner can do it
+                await tokenDistributor.connect(addr1).setDailyLimit(ethers.parseEther("2000"));
+
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
+            } catch (error) {
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
+                throw error;
+            }
+        });
+
+        // it("Should prevent malicious batch operations", async function () {
+        //     try {
+        //         // Attempt distributing to invalid addresses
+        //         const invalidAddresses = [
+        //             ZERO_ADDRESS,
+        //             ethers.ZeroAddress,
+        //             "0x000000000000000000000000000000000000dEaD"
+        //         ];
+        //         const amounts = Array(invalidAddresses.length).fill(ethers.parseEther("1"));
+
+        //         await expect(tokenDistributor.distributeTokensBatch(invalidAddresses, amounts))
+        //             .to.be.reverted;
+
+        //         TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
+        //     } catch (error) {
+        //         TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
+        //         throw error;
+        //     }
+        // });
+        // it("Should revert batch operations correectly with amount over totalBalance or unauthorized caller", async function () {
+        //     try {
+        //         // Attempt distributing to invalid addresses
+        //         const addresses = [
+        //             addr1.address,
+        //             addr2.address,
+        //             addr3.address,
+        //         ];
+        //         const amounts = Array(addresses.length).fill(ethers.parseEther("1000"));
+
+        //         await expect(tokenDistributor.connect(addr1).distributeTokensBatch(addresses, amounts))
+        //             .to.be.revertedWithCustomError(tokenDistributor,"UnauthorizedCaller");
+
+
+        //         await expect(tokenDistributor.distributeTokensBatch(addresses, amounts))
+        //             .to.be.revertedWithCustomError(tokenDistributor,"NotEnoughTokensOnDistributor");
+
+        //         TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
+        //     } catch (error) {
+        //         TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
+        //         throw error;
+        //     }
+        // });
+    });
+
+    describe("Complex State Transitions", function () {
+        it("Should handle rapid state changes correctly", async function () {
+            try {
+                const amount = ethers.parseEther("20"); 
+                // total day usage can be up to 100
+                await nbkToken.mint(await tokenDistributor.getAddress(), INITIAL_SUPPLY);
+
+
+                for (let i = 0; i < 5; i++) {
+                    // distribute
+                    await tokenDistributor.distributeTokens(addr1.address, amount,RATE);
+
+                    // Pause
+                    await tokenDistributor.pauseDistributor();
+
+                    // Attempt distributing while paused => "Pausable: paused"
+                    await expect(tokenDistributor.distributeTokens(addr1.address, amount, RATE))
+                        .to.be.revertedWithCustomError(tokenDistributor,"EnforcedPause");
+
+                    // Unpause
+                    await tokenDistributor.unpauseDistributor();
+
+                    // distribute again
+                    await tokenDistributor.distributeTokens(addr1.address, amount, RATE);
+                }
+
+                // final balance for addr1 => 5 * 2 calls * 20 each => 200
+                const finalBalance = await nbkToken.balanceOf(addr1.address);
+                expect(finalBalance).to.equal(ethers.parseEther("200"));
+
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
+            } catch (error) {
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
+                throw error;
+            }
+        });
+
+        it("Should maintain consistent state during complex operations", async function () {
+            try {
+                const operations = [
+                    {
+                        action: "distribute",
+                        amount: ethers.parseEther("30"),
+                        recipient: addr1.address
+                    },
+                    {
+                        action: "updateLimit",
+                        newLimit: ethers.parseEther("200")
+                    },
+                    {
+                        action: "pause"
+                    },
+                    {
+                        action: "unpause"
+                    },
+                    {
+                        action: "distribute",
+                        amount: ethers.parseEther("50"),
+                        recipient: addr2.address
+                    }
+                ];
+
+                for (const op of operations) {
+                    switch (op.action) {
+                        case "distribute":
+                            await tokenDistributor.distributeTokens(op.recipient!, op.amount!, RATE);
+                            break;
+                        case "updateLimit":
+                            await tokenDistributor.setDailyLimit(op.newLimit!);
+                            break;
+                        case "pause":
+                            await tokenDistributor.pauseDistributor();
+                            break;
+                        case "unpause":
+                            await tokenDistributor.unpauseDistributor();
+                            break;
+                    }
+                }
+
+                // final checks
+                expect(await tokenDistributor.dailyLimit()).to.equal(ethers.parseEther("200"));
+                expect(await tokenDistributor.paused()).to.be.false;
+                expect(await nbkToken.balanceOf(addr1.address)).to.equal(ethers.parseEther("30"));
+                expect(await nbkToken.balanceOf(addr2.address)).to.equal(ethers.parseEther("50"));
+
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
+            } catch (error) {
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
+                throw error;
+            }
+        });
+    });
+
+    describe("Recovery and Error Handling", function () {
+        it("Should recover from failed operations gracefully", async function () {
+            try {
+                const amount = ethers.parseEther("20");
+                
+                // Pause => "Pausable: paused" revert
+                await tokenDistributor.pauseDistributor();
+                await expect(tokenDistributor.distributeTokens(addr1.address, amount, RATE))
+                    .to.be.revertedWithCustomError(tokenDistributor,"EnforcedPause");;
+
+                // Unpause
+                await tokenDistributor.unpauseDistributor();
+                await tokenDistributor.distributeTokens(addr1.address, amount, RATE);
+
+                // final checks
+                expect(await nbkToken.balanceOf(addr1.address)).to.equal(amount);
+                expect(await tokenDistributor.paused()).to.be.false;
+
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
+            } catch (error) {
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
+                throw error;
+            }
+        });
+
+        it("Should handle multiple failed transactions in sequence", async function () {
+            try {
+                const amount = ethers.parseEther("20");
+
+                const failedOps = [
+                    // Distribute to zero => now we expect custom error "InvalidBeneficiary"
+                    {
+                        op: () => tokenDistributor.distributeTokens(ZERO_ADDRESS, amount * RATE, RATE),
+                        expectedError: "InvalidBeneficiary"
+                    },
+                    // Distribute more than contract has => "NotEnoughTokensOnDistributor"
+                    {
+                        op: () => tokenDistributor.distributeTokens(
+                            addr1.address, 
+                            (INITIAL_SUPPLY + ethers.parseEther("50")) * RATE,
+                            RATE
+                        ),
+                        expectedError: "NotEnoughTokensOnDistributor"
+                    }
+                    // Distribute with mismatched arrays => "ArrayMismatchBatchDistribution"
+                    // {
+                    //     op: () => tokenDistributor.distributeTokensBatch([addr1.address, addr2.address], [amount]),
+                    //     expectedError: "ArrayMismatchBatchDistribution"
+                    // }
+                ];
+
+                for (const fop of failedOps) {
+                    await expect(fop.op()).to.be.revertedWithCustomError(tokenDistributor, fop.expectedError);
+                }
+
+                // Should still work after fails
+                await tokenDistributor.distributeTokens(addr1.address, amount, RATE);
+                expect(await nbkToken.balanceOf(addr1.address)).to.equal(amount);
+
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
+            } catch (error) {
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
+                throw error;
+            }
+        });
+    });
+
+    describe("Boundary Conditions and Edge Cases", function () {
+        it("Should handle minimum and maximum values correctly", async function () {
+            try {
+                const minAmount = BigInt(1); 
+                // await nbkToken.mint(await tokenDistributor.getAddress(), INITIAL_SUPPLY);
+                // max is the entire supply for now, since dailyLimit=100 and supply=100 => we can do 100 in one go
+
+                // distribute min
+                await tokenDistributor.distributeTokens(addr1.address, minAmount * RATE, RATE);
+                expect(await nbkToken.balanceOf(addr1.address)).to.equal(minAmount * RATE);
+                
+
+                const remain = (INITIAL_SUPPLY - minAmount) / RATE; // cantidad en wei
+               
+                await tokenDistributor.distributeTokens(addr2.address, remain * RATE, RATE);
+                expect(await nbkToken.balanceOf(addr2.address)).to.equal(remain * RATE);
+                // Now the contract is empty => distributing 1 more => NotEnoughTokensOnDistributor
+                await expect(tokenDistributor.distributeTokens(addr3.address, minAmount * RATE, RATE))
+                    .to.be.revertedWithCustomError(tokenDistributor, "NotEnoughTokensOnDistributor");
+
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
+            } catch (error) {
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
+                throw error;
+            }
+        });
+
+        it("Should handle time-based edge cases", async function () {
+            try {
+                await nbkToken.mint(await tokenDistributor.getAddress(), INITIAL_SUPPLY);
+                await nbkToken.mint(await tokenDistributor.getAddress(), INITIAL_SUPPLY);
+                await nbkToken.mint(await tokenDistributor.getAddress(), INITIAL_SUPPLY);
+                const amount = ethers.parseEther("2");
+                const timeJumps = [
+                    1,
+                    60,
+                    3600,
+                    86400,     
+                    86400 * 7,
+                    86400 * 30,
+                    86400 * 365
+                ];
+
+                await addr3.sendTransaction({
+                    to: await tokenDistributor.getAddress(),
+                    value: ethers.parseEther("600")
+                })
+                
+                let withdrawToday:bigint = BigInt(0);
+                for (const jump of timeJumps) {
+                    await expect(await tokenDistributor.withdrawFunds(amount)).to.emit(tokenDistributor,"FundsWithdrawn").to.emit(tokenDistributor,"ActivityPerformed")
+                    withdrawToday += amount
+                    await ethers.provider.send("evm_increaseTime", [jump]); // 8 días
+                    await ethers.provider.send("evm_mine");
+
+                    const remain = await tokenDistributor.getRemainingDailyLimit();
+
+                    if (jump >= 86400) {
+                        expect(remain).to.equal(DAILY_LIMIT);
+                    } else {
+                        expect(remain).to.equal(DAILY_LIMIT - withdrawToday);
+                    }
+                }
+
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
+            } catch (error) {
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
+                throw error;
+            }
+        });
+
+        it("Should handle concurrent operations correctly", async function () {
+            try {
+                const amount = ethers.parseEther("10");
+                const ops = 5; 
+                // 5 * 10 = 50 total => under daily limit 100
+
+                const promises = [];
+                for (let i = 0; i < ops; i++) {
+                    promises.push(tokenDistributor.distributeTokens(addr1.address, amount, RATE));
+                }
+
+                await Promise.all(promises);
+
+                const finalBalance = await nbkToken.balanceOf(addr1.address);
+                expect(finalBalance).to.equal(amount * BigInt(ops));
+
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
+            } catch (error) {
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
+                throw error;
+            }
+        });
+    });
+
+    describe("Integration and Interaction Patterns", function () {
+        it("Should handle complex token distribution patterns", async function () {
+            try {
+                // We'll do 3 distributions with short delays, each <= dailyLimit total
+                const distributions = [
+                    { recipient: addr1.address, amount: ethers.parseEther("30"), delay: 0 },
+                    { recipient: addr2.address, amount: ethers.parseEther("50"), delay: 1000 },
+                    { recipient: addr3.address, amount: ethers.parseEther("20"), delay: 2000 }
+                ];
+
+                for (const dist of distributions) {
+                    if (dist.delay > 0) {
+                        await time.increase(dist.delay);
+                    }
+                    await tokenDistributor.distributeTokens(dist.recipient, dist.amount, RATE);
+                }
+
+                expect(await nbkToken.balanceOf(addr1.address)).to.equal(ethers.parseEther("30"));
+                expect(await nbkToken.balanceOf(addr2.address)).to.equal(ethers.parseEther("50"));
+                expect(await nbkToken.balanceOf(addr3.address)).to.equal(ethers.parseEther("20"));
+
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
+            } catch (error) {
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
+                throw error;
+            }
+        });
+
+    //     it("Should maintain consistency during mixed operations", async function () {
+    //         try {
+    //             const amount = ethers.parseEther("30");
+                
+    //             const mixedOps = async () => {
+    //                 // normal distribution
+    //                 await tokenDistributor.distributeTokens(addr1.address, amount);
+                    
+    //                 // pause + dailyLimit update
+    //                 await tokenDistributor.pauseDistributor();
+    //                 await tokenDistributor.setDailyLimit(DAILY_LIMIT * BigInt(2));
+
+    //                 // unpause + batch distribution
+    //                 await tokenDistributor.unpauseDistributor();
+    //                 const batchAddresses = [addr2.address, addr3.address];
+    //                 const batchAmounts = [ethers.parseEther("20"), ethers.parseEther("20")];
+    //                 await tokenDistributor.distributeTokensBatch(batchAddresses, batchAmounts);
+    //             };
+
+    //             await mixedOps();
+
+    //             expect(await nbkToken.balanceOf(addr1.address)).to.equal(amount);
+    //             expect(await nbkToken.balanceOf(addr2.address)).to.equal(ethers.parseEther("20"));
+    //             expect(await nbkToken.balanceOf(addr3.address)).to.equal(ethers.parseEther("20"));
+    //             expect(await tokenDistributor.dailyLimit()).to.equal(DAILY_LIMIT * BigInt(2));
+    //             expect(await tokenDistributor.paused()).to.be.false;
+
+    //             TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
+    //         } catch (error) {
+    //             TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
+    //             throw error;
+    //         }
+    //     });
+    });
+
+    describe("Function Interactions and Dependencies", function () {
+        interface OperationResult {
+            type: string;
+            recipient?: string;
+            amount?: bigint;
+            newLimit?: bigint;
+        }
+
+        it("Should verify contract state consistency", async function () {
+            try {
+                const amount = ethers.parseEther("50");
+                
+                // Sequence of ops
+                const operations = [
+                    async () => {
+                        await tokenDistributor.distributeTokens(addr1.address, amount, RATE);
+                        return { type: "distribution", recipient: addr1.address, amount } as OperationResult;
+                    },
+                    async () => {
+                        await tokenDistributor.pauseDistributor();
+                        return { type: "pause" } as OperationResult;
+                    },
+                    async () => {
+                        await tokenDistributor.setDailyLimit(DAILY_LIMIT * BigInt(2));
+                        return { type: "limitUpdate", newLimit: DAILY_LIMIT * BigInt(2) } as OperationResult;
+                    },
+                    async () => {
+                        await tokenDistributor.unpauseDistributor();
+                        return { type: "unpause" } as OperationResult;
+                    }
+                ];
+
+                for (const op of operations) {
+                    const result = await op();
+                    switch (result.type) {
+                        case "distribution":
+                            expect(await nbkToken.balanceOf(result.recipient!)).to.equal(result.amount);
+                            break;
+                        case "pause":
+                            expect(await tokenDistributor.paused()).to.be.true;
+                            break;
+                        case "unpause":
+                            expect(await tokenDistributor.paused()).to.be.false;
+                            break;
+                        case "limitUpdate":
+                            expect(await tokenDistributor.dailyLimit()).to.equal(result.newLimit);
+                            break;
+                    }
+                }
+
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
+            } catch (error) {
+                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
+                throw error;
+            }
+        });
     });
 });

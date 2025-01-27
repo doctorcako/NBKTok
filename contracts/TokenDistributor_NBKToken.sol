@@ -4,7 +4,6 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-// import "./NBKToken.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 
@@ -14,7 +13,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  */
 contract TokenDistributor is Ownable, Pausable, ReentrancyGuard {
     IERC20 public immutable token;
-    address public icoContract;
+
 
     /// @notice Maximum tokens that can be withdrawn or distributed in one day
     uint256 public dailyLimit;
@@ -28,7 +27,6 @@ contract TokenDistributor is Ownable, Pausable, ReentrancyGuard {
     event DailyLimitUpdated(uint256 newLimit);
     event FundsWithdrawn(address indexed owner, uint256 amount, bool success);
     event FundsReceived(address sender, uint256 amount);
-    event ICOContractUpdated(address oldICO, address newICO);
     event EmergencyTokenRecovery(address token, address to, uint256 amount);
 
     /**
@@ -75,7 +73,7 @@ contract TokenDistributor is Ownable, Pausable, ReentrancyGuard {
      * @dev Distribute tokens to a single beneficiary
      *      Both owner and ICO contract can call
      */
-    function distributeTokens(address beneficiary, uint256 amount)
+    function distributeTokens(address beneficiary, uint256 amount, uint256 rate)
         external
         whenNotPaused
         nonReentrant
@@ -90,7 +88,7 @@ contract TokenDistributor is Ownable, Pausable, ReentrancyGuard {
 
         // Check token balance first
         uint256 currentBalance = token.balanceOf(address(this));
-        if (currentBalance < amount) {
+        if (currentBalance < amount / rate) {
             revert NotEnoughTokensOnDistributor(currentBalance, amount);
         }
         
@@ -115,11 +113,11 @@ contract TokenDistributor is Ownable, Pausable, ReentrancyGuard {
         if (withdrawnToday + amount > dailyLimit) {
             revert DailyLimitWithdrawReached(withdrawnToday, amount, dailyLimit);
         }
-
+        
         dailyWithdrawn[today] = withdrawnToday + amount;
         emit ActivityPerformed(msg.sender, amount);
-        (bool success, ) = payable(owner()).call{value: amount}("");
-        emit FundsWithdrawn(owner(), amount,success);
+        payable(owner()).transfer(amount);
+        emit FundsWithdrawn(owner(), amount, true);
     }
 
     /**
@@ -213,24 +211,9 @@ contract TokenDistributor is Ownable, Pausable, ReentrancyGuard {
     }
 
     /**
-     * @dev Update ICO contract address
-     */
-    function setICOContract(address icoContract_) external onlyOwner {
-        if (icoContract_ == address(0)) revert InvalidBeneficiary(address(0));
-        address oldICO = icoContract;
-        icoContract = icoContract_;
-        emit ICOContractUpdated(oldICO, icoContract_);
-        emit ActivityPerformed(msg.sender, 0);
-    }
-
-    /**
      * @dev Accept ETH
      */
     receive() external payable {
-        emit FundsReceived(msg.sender, msg.value);
-    }
-
-    fallback() external payable {
         emit FundsReceived(msg.sender, msg.value);
     }
 }

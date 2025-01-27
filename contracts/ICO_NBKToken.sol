@@ -28,6 +28,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
 
     uint256 public timelockDuration;
     uint256 public rate;
+    uint256 public minPurchaseAmount;
 
     TokenDistributor private immutable tokenDistributor;
 
@@ -52,6 +53,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     event CliffUpdated(uint256 cliff);
     event VestingDurationUpdated(uint256 vestingDuration);
     event EthTransferSuccess(bool success);
+    event MinAmountUpdated(uint256 minAmount);
 
     error AddressNotInWhitelist(address investor);
     error NoTokensAvailable(uint256 amount);
@@ -78,6 +80,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     error InvalidVestingDuration(uint256 vestingDuration);
     error VestingNotEnabledForManualAssignment(address investor);
     error UnlockVestingIntervalsNotDefined();
+    error InvalidMinAmount(uint256 minAmount);
 
     constructor(address payable tokenDistributorAddress_, address ownerWallet) Ownable(ownerWallet){
         if(tokenDistributorAddress_ == address(0)) revert InvalidAddress(tokenDistributorAddress_);
@@ -97,45 +100,45 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
         cliffDurationInMonths = 3;
         vestingEnabled = false;
         whitelistEnabled = false;
-
+        minPurchaseAmount = 333333000000000000 wei; // 1€ con eth a 3000€
     }
 
     function buyTokens() external payable whenNotPaused nonReentrant {
-        uint256 tokensToBuy = (msg.value * rate) / 1 ether;
+        uint256 tokensToBuyInWei = (msg.value * rate);
         // bool purchaseIsValid = purchaseValid(msg.sender, tokensToBuy);
-        if(purchaseValid(msg.sender, tokensToBuy)){
+        if(purchaseValid(msg.sender, tokensToBuyInWei)){
             if (vestingEnabled) {
                 if (unlockVestingIntervals.length == 0){
                     revert UnlockVestingIntervalsNotDefined();
                 }else{
                     if(vestings[msg.sender].totalAmount != 0 && phaseUserVestings[currentPhaseInterval][msg.sender].length != 0){
-                        uint256 newTotal = vestings[msg.sender].totalAmount + tokensToBuy;
-                        if (newTotal <= maxTokensPerUser) {
+                        uint256 newTotal = vestings[msg.sender].totalAmount + tokensToBuyInWei;
+                        if (newTotal  <= maxTokensPerUser * 1 ether ) {
                             vestings[msg.sender].totalAmount = newTotal;
                         } else {
-                            revert TotalAmountExceeded(msg.sender, tokensToBuy);
+                            revert TotalAmountExceeded(msg.sender, tokensToBuyInWei);
                         }
                     } else {
-                        VestingSchedule.VestingData memory vesting = VestingSchedule.createVesting(tokensToBuy, cliffDurationInMonths, vestingDurationInMonths);
+                        VestingSchedule.VestingData memory vesting = VestingSchedule.createVesting(tokensToBuyInWei, cliffDurationInMonths, vestingDurationInMonths);
                         vestings[msg.sender] = vesting;
                         phaseUserVestings[currentPhaseInterval][msg.sender] = unlockVestingIntervals;
                     }
-                    emit VestingAssigned(msg.sender, tokensToBuy, currentPhaseInterval);
+                    emit VestingAssigned(msg.sender, tokensToBuyInWei, currentPhaseInterval);
                 }
             } else {
-                if (icoPublicUserBalances[msg.sender] != 0 && icoPublicUserBalances[msg.sender] + tokensToBuy > maxTokensPerUser){
-                    revert TotalAmountExceeded(msg.sender, tokensToBuy);
+                if (icoPublicUserBalances[msg.sender] != 0 && (icoPublicUserBalances[msg.sender]) + (tokensToBuyInWei/1 ether)  > maxTokensPerUser){
+                    revert TotalAmountExceeded(msg.sender, tokensToBuyInWei);
                 }
-                icoPublicUserBalances[msg.sender] += tokensToBuy;
+                icoPublicUserBalances[msg.sender] += tokensToBuyInWei / 1 ether;
             }
 
             uint256 oldMintedTokens = mintedTokens;
-            mintedTokens += tokensToBuy;
+            mintedTokens += tokensToBuyInWei / 1 ether;
             lastPurchaseTime[msg.sender] = block.timestamp;
 
             payable(tokenDistributorAddress).transfer(msg.value);
             emit MintedTokensUpdated(oldMintedTokens, mintedTokens);
-            if(!vestingEnabled) tokenDistributor.distributeTokens(msg.sender, tokensToBuy);
+            if(!vestingEnabled) tokenDistributor.distributeTokens(msg.sender, tokensToBuyInWei, rate);
         }
     }
 
@@ -153,13 +156,13 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
         if(msg.value == 0){
             revert NoMsgValueSent(msg.value);
         }
-        if(amount == 0){
+        if(amount < minPurchaseAmount){
             revert InsufficientETHForTokenPurchase(amount);
         }
-        if(amount > getAvailableTokens()){
+        if(amount / 1 ether > getAvailableTokens()){
             revert NoTokensAvailable(amount);
         }
-        if(amount > maxTokensPerUser){
+        if(amount / 1 ether > maxTokensPerUser){
             revert TotalAmountExceeded(investor, amount);
         }
         
@@ -190,7 +193,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
         }
         if(releasable > 0){
             vesting.claimedAmount += releasable; // Actualizar tokens reclamados
-            tokenDistributor.distributeTokens(msg.sender, releasable);
+            tokenDistributor.distributeTokens(msg.sender, releasable, rate);
         }else{
             revert NoReleasableTokens(msg.sender);
         }
@@ -325,6 +328,14 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
         startTime = startTime_;
         endTime = endTime_;
         emit ICOPeriodUpdated(startTime_, endTime_);
+    }
+
+    function setMinimumPurchaseAmount(uint256 minPurchaseAmount_) external onlyOwner{
+        if (minPurchaseAmount_ == 0) {
+            revert InvalidMinAmount(minPurchaseAmount_);
+        }
+        emit MinAmountUpdated(minPurchaseAmount_);
+        minPurchaseAmount = minPurchaseAmount_;
     }
 
     function getICOInfo() external view returns (
