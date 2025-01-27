@@ -438,11 +438,11 @@ describe("ICO", () => {
                 // Intentar comprar más que el máximo permitido
                 await ico.connect(owner).setWhitelistEnabled(false)
                 await expect(ico.connect(addr3).buyTokens({ value: ethers.parseEther("4") }))
-                    .to.emit(ico, "EthTransferSuccess");
+                    .to.emit(ico, "MintedTokensUpdated");
                 await time.increase(Number(TIMELOCK_DURATION));
 
                 await expect(ico.connect(addr3).buyTokens({ value: ethers.parseEther("5") }))
-                    .to.emit(ico, "EthTransferSuccess");
+                    .to.emit(ico, "MintedTokensUpdated");
                 
                 await time.increase(Number(TIMELOCK_DURATION));
 
@@ -805,7 +805,7 @@ describe("ICO", () => {
                 // Wait remaining time
                 await time.increase(61);
                 await expect(await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT }))
-                    .to.emit(ico,"EthTransferSuccess").withArgs(true)
+                    .to.emit(ico,"MintedTokensUpdated")
 
                 TestLogger.logTestResult("ICO", "Edge Cases and Boundary Testing", 
                     "Should handle timelock between purchases correctly", "passed", 0);

@@ -17,6 +17,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     uint256 public cliffDurationInMonths;
     uint256 public vestingDurationInMonths;
     mapping(address => uint256) private icoPublicUserBalances;
+    address payable private tokenDistributorAddress;
 
     bool public whitelistEnabled;
     bool public vestingEnabled;
@@ -78,11 +79,12 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     error VestingNotEnabledForManualAssignment(address investor);
     error UnlockVestingIntervalsNotDefined();
 
-    constructor(address tokenDistributorAddress, address ownerWallet) Ownable(ownerWallet){
-        if(tokenDistributorAddress == address(0)) revert InvalidAddress(tokenDistributorAddress);
+    constructor(address payable tokenDistributorAddress_, address ownerWallet) Ownable(ownerWallet){
+        if(tokenDistributorAddress_ == address(0)) revert InvalidAddress(tokenDistributorAddress_);
         if(ownerWallet == address(0)) revert InvalidAddress(ownerWallet);
         
-        tokenDistributor = TokenDistributor(payable(tokenDistributorAddress));
+        tokenDistributorAddress = tokenDistributorAddress_;
+        tokenDistributor = TokenDistributor(tokenDistributorAddress);
         
         startTime = block.timestamp;
         endTime = block.timestamp + 30 days;
@@ -93,6 +95,9 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
         currentPhaseInterval = 0;
         vestingDurationInMonths = 12;
         cliffDurationInMonths = 3;
+        vestingEnabled = false;
+        whitelistEnabled = false;
+
     }
 
     function buyTokens() external payable whenNotPaused nonReentrant {
@@ -127,13 +132,10 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
             uint256 oldMintedTokens = mintedTokens;
             mintedTokens += tokensToBuy;
             lastPurchaseTime[msg.sender] = block.timestamp;
-            
-            (bool transferSuccess, ) = payable(address(tokenDistributor)).call{value: msg.value}("");
+
+            payable(tokenDistributorAddress).transfer(msg.value);
             emit MintedTokensUpdated(oldMintedTokens, mintedTokens);
-            if(transferSuccess){
-                emit EthTransferSuccess(transferSuccess);
-                if(!vestingEnabled) tokenDistributor.distributeTokens(msg.sender, tokensToBuy);
-            }
+            if(!vestingEnabled) tokenDistributor.distributeTokens(msg.sender, tokensToBuy);
         }
     }
 

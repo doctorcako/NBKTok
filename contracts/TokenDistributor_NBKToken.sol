@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "./NBKToken.sol";
+// import "./NBKToken.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 
@@ -13,7 +13,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  * @notice Distributes NBK tokens subject to a daily limit.
  */
 contract TokenDistributor is Ownable, Pausable, ReentrancyGuard {
-    NBKToken public immutable token;
+    IERC20 public immutable token;
     address public icoContract;
 
     /// @notice Maximum tokens that can be withdrawn or distributed in one day
@@ -66,7 +66,7 @@ contract TokenDistributor is Ownable, Pausable, ReentrancyGuard {
         if (ownerWallet == address(0)) revert InvalidBeneficiary(address(0));
         if (_dailyLimit == 0) revert DailyLimitUpdateValueIncorrect(_dailyLimit);
 
-        token = NBKToken(tokenAddress);
+        token = IERC20(tokenAddress);
         dailyLimit = _dailyLimit;
         // dailyWithdrawn[block.timestamp / 1 days] = 0;
     }
@@ -227,6 +227,10 @@ contract TokenDistributor is Ownable, Pausable, ReentrancyGuard {
      * @dev Accept ETH
      */
     receive() external payable {
+        emit FundsReceived(msg.sender, msg.value);
+    }
+
+    fallback() external payable {
         emit FundsReceived(msg.sender, msg.value);
     }
 }
