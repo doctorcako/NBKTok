@@ -17,7 +17,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     uint256 public cliffDurationInMonths;
     uint256 public vestingDurationInMonths;
     mapping(address => uint256) private icoPublicUserBalances;
-    address payable private tokenDistributorAddress;
+    address payable immutable private tokenDistributorAddress;
 
     bool public whitelistEnabled;
     bool public vestingEnabled;
@@ -92,15 +92,16 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
         startTime = block.timestamp;
         endTime = block.timestamp + 30 days;
         rate = 1000; // 1 ETH = 1000 tokens
-        maxTokens = 1_000_000; // 1 millón de tokens
-        maxTokensPerUser = 10_000; // 10,000 tokens por usuario
+        maxTokens = 1_000_000 * 10**18; // 1 millón de tokens
+        maxTokensPerUser = 10_000 * 10**18; // 10,000 tokens por usuario
         timelockDuration = 1 days; // 1 día entre compras  
         currentPhaseInterval = 0;
         vestingDurationInMonths = 12;
         cliffDurationInMonths = 3;
         vestingEnabled = false;
         whitelistEnabled = false;
-        minPurchaseAmount = 333333000000000000 wei; // 1€ con eth a 3000€
+        minPurchaseAmount = 333333 * 10**12; // 1€ con eth a 3000€
+        
     }
 
     function buyTokens() external payable whenNotPaused nonReentrant {
@@ -113,7 +114,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
                 }else{
                     if(vestings[msg.sender].totalAmount != 0 && phaseUserVestings[currentPhaseInterval][msg.sender].length != 0){
                         uint256 newTotal = vestings[msg.sender].totalAmount + tokensToBuyInWei;
-                        if (newTotal  <= maxTokensPerUser * 1 ether ) {
+                        if (newTotal  <= maxTokensPerUser) {
                             vestings[msg.sender].totalAmount = newTotal;
                         } else {
                             revert TotalAmountExceeded(msg.sender, tokensToBuyInWei);
@@ -126,14 +127,14 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
                     emit VestingAssigned(msg.sender, tokensToBuyInWei, currentPhaseInterval);
                 }
             } else {
-                if (icoPublicUserBalances[msg.sender] != 0 && (icoPublicUserBalances[msg.sender]) + (tokensToBuyInWei/1 ether)  > maxTokensPerUser){
+                if (icoPublicUserBalances[msg.sender] != 0 && (icoPublicUserBalances[msg.sender]) + (tokensToBuyInWei)  > maxTokensPerUser){
                     revert TotalAmountExceeded(msg.sender, tokensToBuyInWei);
                 }
-                icoPublicUserBalances[msg.sender] += tokensToBuyInWei / 1 ether;
+                icoPublicUserBalances[msg.sender] += tokensToBuyInWei;
             }
 
             uint256 oldMintedTokens = mintedTokens;
-            mintedTokens += tokensToBuyInWei / 1 ether;
+            mintedTokens += tokensToBuyInWei;
             lastPurchaseTime[msg.sender] = block.timestamp;
 
             payable(tokenDistributorAddress).transfer(msg.value);
@@ -159,10 +160,10 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
         if(amount < minPurchaseAmount){
             revert InsufficientETHForTokenPurchase(amount);
         }
-        if(amount / 1 ether > getAvailableTokens()){
+        if(amount > getAvailableTokens()){
             revert NoTokensAvailable(amount);
         }
-        if(amount / 1 ether > maxTokensPerUser){
+        if(amount > maxTokensPerUser){
             revert TotalAmountExceeded(investor, amount);
         }
         
