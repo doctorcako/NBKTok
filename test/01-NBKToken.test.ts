@@ -127,7 +127,7 @@ describe("NBKToken", () => {
             try {
                 await expect(
                     token.mint(ZERO_ADDRESS, MINT_AMOUNT)
-                ).to.be.revertedWith("ERC20: mint to the zero address");
+                ).to.be.revertedWithCustomError(token,"MintToZeroAddress");
 
                 TestLogger.logTestResult("NBKToken", "Minting Functionality", 
                     "Should not allow minting to zero address", "passed", 0);
@@ -203,7 +203,7 @@ describe("NBKToken", () => {
                 const excessAmount = MINT_AMOUNT + ethers.parseEther("1");
                 await expect(
                     token.connect(addr1).burn(excessAmount)
-                ).to.be.revertedWith("ERC20: burn amount exceeds balance");
+                ).to.be.revertedWithCustomError(token,"BurnAmountExceedsBalance");
 
                 TestLogger.logTestResult("NBKToken", "Burning Functionality", 
                     "Should not allow burning more than balance", "passed", 0);
@@ -218,7 +218,7 @@ describe("NBKToken", () => {
             try {
                 await expect(
                     token.connect(addr2).burn(TRANSFER_AMOUNT)
-                ).to.be.revertedWith("ERC20: burn amount exceeds balance");
+                ).to.be.revertedWithCustomError(token,"BurnAmountExceedsBalance");
 
                 TestLogger.logTestResult("NBKToken", "Burning Functionality", 
                     "Should not allow burning when balance is zero", "passed", 0);

@@ -31,16 +31,23 @@ contract TokenDistributor is Ownable, Pausable, ReentrancyGuard {
     event ActivityPerformed(address indexed actor, uint256 amountOrData);
 
     /// ----------------- ERRORS -----------------
-    error ArrayMismatchBatchDistribution(uint256 usersLength, uint256 amountsLength);
+    // Token transfers related
     error TransferFailed(address receiver, uint256 amount);
     error NotEnoughTokensOnDistributor(uint256 balance, uint256 requested);
+
+    // Withdraw related
     error DailyLimitWithdrawReached(uint256 current, uint256 requested, uint256 limit);
     error InvalidWithdrawAmount(uint256 amount);
-    error DailyLimitUpdateValueIncorrect(uint256 amount);
-    error InvalidBeneficiary(address beneficiary);
-    error EmptyArrays();
-    error UnauthorizedCaller(address caller);
     error NotEnoughEtherToWithdraw(uint256 eth);
+
+    //Daily limit related
+    error DailyLimitUpdateValueIncorrect(uint256 amount);
+    error DailyLimitValueNotUpdating(uint256 amount);
+
+    //other
+    error InvalidBeneficiary(address beneficiary);
+    error UnauthorizedCaller(address caller);
+    error InteractorAlreadyAllowed();
 
     /**
      * @param tokenAddress Address of NBKToken
@@ -64,25 +71,23 @@ contract TokenDistributor is Ownable, Pausable, ReentrancyGuard {
      * @dev Distributes tokens to a single beneficiary.
      * @param beneficiary Address to receive the tokens.
      * @param amount Amount of tokens to distribute.
-     * @param rate Conversion rate (for handling token-to-ETH rates).
      * @notice Only the owner or allowed interactors can call this.
      */
-    function distributeTokens(address beneficiary, uint256 amount, uint256 rate)
+    /// #if_succeeds { :msg "Distribute tokens correctly" } old(token.balanceOf(beneficiary)) + amount == token.balanceOf(beneficiary);
+    function distributeTokens(address beneficiary, uint256 amount)
         external
         whenNotPaused
         nonReentrant
     {
-        // Restrict to owner or allowed interactors
         if (!isAllowed(_msgSender())) {
             revert UnauthorizedCaller(_msgSender());
         }
-        // Validate beneficiary and amount
+
         if (beneficiary == address(0)) revert InvalidBeneficiary(beneficiary);
         if (amount == 0) revert InvalidWithdrawAmount(amount);
 
-        // Check the token balance before attempting transfer
         uint256 currentBalance = token.balanceOf(address(this));
-        if (currentBalance < amount / rate) {
+        if (currentBalance < amount) {
             revert NotEnoughTokensOnDistributor(currentBalance, amount);
         }
 
@@ -97,15 +102,13 @@ contract TokenDistributor is Ownable, Pausable, ReentrancyGuard {
      * @dev Withdraws Ether from the contract to the owner's address.
      * @param amount Amount of Ether to withdraw.
      */
+    /// #if_succeeds { :msg "Withdraw funds correctly" } old(address(this).balance) + amount == address(this).balance;
     function withdrawFunds(uint256 amount) external onlyOwner whenNotPaused nonReentrant {
         if (amount == 0) revert InvalidWithdrawAmount(amount);
 
-        // Ensure sufficient Ether balance in contract
         if (amount > address(this).balance) {
             revert NotEnoughEtherToWithdraw(amount);
         }
-
-        // Ensure withdrawal does not exceed daily limit
         uint256 today = block.timestamp / 1 days;
         uint256 withdrawnToday = dailyWithdrawn[today];
         if (withdrawnToday + amount > dailyLimit) {
@@ -124,6 +127,7 @@ contract TokenDistributor is Ownable, Pausable, ReentrancyGuard {
      * @param to The address to send the recovered tokens.
      * @param amount The amount of tokens to recover.
      */
+    /// #if_succeeds { :msg "Should recover the tokens" } old(IERC20(tokenAddress).balanceOf(to)) + amount == IERC20(tokenAddress).balanceOf(to);
     function emergencyTokenRecovery(
         address tokenAddress,
         address to,
@@ -153,9 +157,13 @@ contract TokenDistributor is Ownable, Pausable, ReentrancyGuard {
      * @dev Set the allowed interactors (other addresses authorized to distribute tokens).
      * @param interactor Address of the interactor to authorize.
      */
+    /// #if_succeeds { :msg "Set allowed interactor correctly" } allowedInteractors[interactor] == true;
     function setAllowedInteractors(address interactor) external onlyOwner {
         if (interactor == address(0)) {
             revert InvalidBeneficiary(address(0));
+        }
+        if (allowedInteractors[interactor]) {
+            revert InteractorAlreadyAllowed();
         }
         allowedInteractors[interactor] = true;
     }
@@ -163,7 +171,7 @@ contract TokenDistributor is Ownable, Pausable, ReentrancyGuard {
     /**
      * @dev Checks if an address is allowed to interact with the contract.
      * @param interactor Address to check.
-     * @return Boolean indicating whether the address is allowed.
+     * @return isAllowed Boolean indicating whether the address is allowed.
      */
     function isAllowed(address interactor) internal view returns (bool) {
         return allowedInteractors[interactor] || interactor == owner();
@@ -172,9 +180,10 @@ contract TokenDistributor is Ownable, Pausable, ReentrancyGuard {
     /**
      * @dev Check if an address is allowed to interact with the contract.
      * @param interactor Address to check.
-     * @return Boolean indicating whether the address is allowed.
+     * @return isAllowed Boolean indicating whether the address is allowed.
      */
-    function checkAllowed(address interactor) external onlyOwner view returns (bool) {
+    /// #if_succeeds { :msg "Interactor is allowed" } allowed == true;
+    function checkAllowed(address interactor) external onlyOwner view returns (bool allowed) {
         return isAllowed(interactor);
     }
 
@@ -182,9 +191,13 @@ contract TokenDistributor is Ownable, Pausable, ReentrancyGuard {
      * @dev Update the daily withdrawal limit.
      * @param dailyLimit_ New daily limit value.
      */
+    /// #if_succeeds { :msg "Daily limit set correctly" } old(dailyLimit) != dailyLimit;
     function setDailyLimit(uint256 dailyLimit_) external onlyOwner {
         if (dailyLimit_ == 0) {
             revert DailyLimitUpdateValueIncorrect(dailyLimit_);
+        }
+        if (dailyLimit == dailyLimit_) {
+            revert DailyLimitValueNotUpdating(dailyLimit_);
         }
         dailyLimit = dailyLimit_;
         emit DailyLimitUpdated(dailyLimit_);
@@ -193,9 +206,10 @@ contract TokenDistributor is Ownable, Pausable, ReentrancyGuard {
 
     /**
      * @dev Returns the remaining daily limit available for withdrawal or distribution.
-     * @return The remaining amount available for withdrawal/distribution today.
+     * @return remaining . The remaining amount available for withdrawal/distribution today.
      */
-    function getRemainingDailyLimit() external view returns (uint256) {
+    /// #if_succeeds { :msg "Get remaining daily limit" } remaining < dailyLimit;
+    function getRemainingDailyLimit() external view returns (uint256 remaining) {
         uint256 withdrawnToday = dailyWithdrawn[block.timestamp / 1 days];
         if (withdrawnToday >= dailyLimit) return 0;
         return dailyLimit - withdrawnToday;
@@ -228,6 +242,7 @@ contract TokenDistributor is Ownable, Pausable, ReentrancyGuard {
     /**
      * @dev Accepts Ether deposits into the contract.
      */
+    /// #if_succeeds { :msg "Receives ETH correctly" } old(address(this).balance) + msg.value == address(this).balance;
     receive() external payable {
         emit FundsReceived(_msgSender(), msg.value);
     }

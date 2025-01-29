@@ -40,6 +40,7 @@ contract NBKToken is ERC20, Ownable {
      * @dev Emits a `Transfer` event as per the ERC20 standard.
      * @custom:error MintToZeroAddress Cannot mint tokens to the zero address.
      */
+    /// #if_succeeds { :msg "Mint correct amount to address" }  balanceOf(to) == amount;
     function mint(address to, uint256 amount) external onlyOwner {
         if (to == address(0)) {
             revert MintToZeroAddress();
@@ -54,6 +55,7 @@ contract NBKToken is ERC20, Ownable {
      * @dev Emits a `Transfer` event as per the ERC20 standard.
      * @custom:error BurnAmountExceedsBalance The burn amount exceeds the caller's balance.
      */
+    /// #if_succeeds { :msg "Burn correct amount" }  ERC20(address(this)).balance == old(ERC20(address(_msgSender())).balance) - amount;
     function burn(uint256 amount) external {
         uint256 callerBalance = balanceOf(_msgSender());
         if (amount > callerBalance) {
