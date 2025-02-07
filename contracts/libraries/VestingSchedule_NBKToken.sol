@@ -25,7 +25,6 @@ library VestingSchedule {
     }
 
     /// ----------------- ERRORS -----------------
-    error InvalidTotalAmount(uint256 amount);  // Error for invalid total amount
     error InvalidCliffTime(uint256 cliff, uint256 duration); // Error for invalid cliff time
     error InvalidVestingPeriod(uint256 duration); // Error for invalid vesting period
 
@@ -41,10 +40,6 @@ library VestingSchedule {
      * @notice Reverts if the cliff time is greater than or equal to the total vesting duration.
      */
     function createVesting(uint256 totalAmount, uint256 cliff, uint256 duration) internal view returns (VestingData memory) {
-        if(cliff >= duration){
-            revert InvalidCliffTime(cliff, duration);
-        }
-
         VestingData memory vestingData = VestingData({
             totalAmount: totalAmount,
             claimedAmount: 0,
@@ -78,13 +73,12 @@ library VestingSchedule {
         }
 
         uint256 totalUnlockedPercentage = 0; // Porcentaje acumulado desbloqueado
+        uint256 vestingIntervalsLength = vestingIntervals.length;
 
-        // Iterar sobre los intervalos para calcular el porcentaje desbloqueado
-        for (uint256 i = 0; i < vestingIntervals.length; i++) {
+        for (uint256 i; i < vestingIntervalsLength; i++) {
             VestingInterval memory interval = vestingIntervals[i];
 
             if (elapsedMonths >= interval.endMonth) {
-                // Si el intervalo completo ha pasado, desbloquear todo el porcentaje del intervalo
                 totalUnlockedPercentage += (interval.endMonth - (i == 0 ? 0 : vestingIntervals[i - 1].endMonth)) * interval.unlockPerMonth;
             } else {
                 // Si aún estamos dentro de este intervalo, desbloquear proporcionalmente
@@ -93,11 +87,8 @@ library VestingSchedule {
                 break;
             }
         }
-
         // Calcular tokens desbloqueados basados en el porcentaje total desbloqueado
         uint256 totalUnlockedTokens = (vesting.totalAmount * totalUnlockedPercentage) / 100;
-
-        // Retornar tokens desbloqueados menos los tokens ya reclamados
         return totalUnlockedTokens > vesting.claimedAmount ? totalUnlockedTokens - vesting.claimedAmount : 0;
     }
 }

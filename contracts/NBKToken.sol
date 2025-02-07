@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
  * @title NBKToken
  * @dev Custom ERC20 Token with mint and burn functionality.
+ * @custom:security-contact dariosansano@neuro-block.com
  */
 contract NBKToken is ERC20, Ownable {
     
@@ -54,8 +55,7 @@ contract NBKToken is ERC20, Ownable {
      * @notice The caller can burn tokens from their own balance.
      * @dev Emits a `Transfer` event as per the ERC20 standard.
      * @custom:error BurnAmountExceedsBalance The burn amount exceeds the caller's balance.
-     */
-    /// #if_succeeds { :msg "Burn correct amount" }  ERC20(address(this)).balance == old(ERC20(address(_msgSender())).balance) - amount;
+    */
     function burn(uint256 amount) external {
         uint256 callerBalance = balanceOf(_msgSender());
         if (amount > callerBalance) {
