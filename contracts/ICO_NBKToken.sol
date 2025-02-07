@@ -62,6 +62,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     // Purchase related
     event MinAmountPurchaseUpdated(uint256 minAmount);
     event RateUpdated(uint256 oldRate, uint256 newRate);
+    event FundsReceived(address sender, uint256 amount);
 
     /// ----------------- ERRORS -----------------
     // Vesting related
@@ -111,37 +112,29 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * @param ownerWallet Address of the contract owner.
      */
     constructor(
-        address payable tokenDistributorAddress_, 
+        address tokenDistributorAddress_,
         address ownerWallet,
         uint256 secondsICOwillStart_, 
-        uint256 icoDurationInDays_,
-        uint256 rate_,
-        uint256 maxTokens_,
-        uint256 maxTokensPerUser_,
-        uint256 timelockDurationInHours_,
-        uint256 vestingDurationInMonths_,
-        uint256 cliffDurationInMonths_,
-        bool vestingEnabled_,
-        bool whitelistEnabled_
+        uint256 icoDurationInDays_
         ) 
         Ownable(ownerWallet)
         {
         if(tokenDistributorAddress_ == address(0)) revert InvalidAddress(tokenDistributorAddress_);
         if(ownerWallet == address(0)) revert InvalidAddress(ownerWallet);
         
-        tokenDistributorAddress = tokenDistributorAddress_;
-        tokenDistributor = TokenDistributor(tokenDistributorAddress_);
+        tokenDistributorAddress = payable(tokenDistributorAddress_);
+        tokenDistributor = TokenDistributor(tokenDistributorAddress);
         
-        startTime = block.timestamp + secondsICOwillStart_;
-        endTime = startTime + (icoDurationInDays_ * 24 * 60 * 60);
-        rate = rate_; // 1 ETH = 1000 tokens
-        maxTokens = maxTokens_ * 10**18; // 1 million tokens
-        maxTokensPerUser = maxTokensPerUser_ * 10**18; // 10,000 tokens per user
-        timelockDuration = timelockDurationInHours_ * 60 * 60; // 1 day between purchases  
-        vestingDurationInMonths = vestingDurationInMonths_;
-        cliffDurationInMonths = cliffDurationInMonths_;
-        vestingEnabled = vestingEnabled_;
-        whitelistEnabled = whitelistEnabled_;
+        startTime = block.timestamp + secondsICOwillStart_; // dentro de x segundos
+        endTime = startTime + (icoDurationInDays_ * 24 * 60 * 60); 
+        rate = 1000; // 1 ETH = 1000 tokens
+        maxTokens = 1_000_000 * 10**18; // 1 million tokens
+        maxTokensPerUser = 10_000 * 10**18; // 10,000 tokens per user
+        timelockDuration = 1 * 60 * 60; // 1 hour between purchases  
+        vestingDurationInMonths = 12;
+        cliffDurationInMonths = 3;
+        vestingEnabled = false;
+        whitelistEnabled = false;
         currentPhaseInterval = 0;
         minPurchaseAmount = 333333 * 10**12; // 1€ with ETH at 3000€
     }
@@ -227,7 +220,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
         if(whitelistEnabled && !whitelist[investor]){
             revert AddressNotInWhitelist(investor);
         }
-        if(msg.value == 0){
+        if(msg.value < 1){
             revert NoMsgValueSent(msg.value);
         }
         if(tokensToBuyInWei < minPurchaseAmount){
@@ -294,7 +287,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      */
     /// #if_succeeds { :msg "Vesting configuration set " } intervals[intervals.length -1].endMonth == vestingDurationInMonths;
     function setVestingConfiguration(uint256 vestingDurationInMonths_, VestingSchedule.VestingInterval[] memory intervals) external onlyOwner {
-        if (vestingDurationInMonths_ == 0) {
+        if (vestingDurationInMonths_ < 1) {
             revert InvalidVestingDuration(vestingDurationInMonths_);
         }
 
@@ -315,7 +308,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
             if (intervals[i].endMonth <= lastEndMonth) {
                 revert InvalidVestingIntervalSequence(i);
             }
-            if (intervals[i].unlockPerMonth == 0) {
+            if (intervals[i].unlockPerMonth < 1) {
                 revert InvalidVestingIntervals(intervals[i].endMonth, intervals[i].unlockPerMonth);
             }
             
@@ -388,7 +381,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      */
     /// #if_succeeds { :msg "Rate updated correctly" } old(rate) != rate;
     function setRate(uint256 newRate) external onlyOwner {
-        if (newRate == 0) {
+        if (newRate < 1) {
             revert InvalidRateValue(newRate);
         }
         if (newRate == rate) { 
@@ -405,7 +398,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     /// #if_succeeds { :msg "Timelock duration change correctly" } old(timelockDuration) != timelockDuration;
     function setTimelockDurationInMinutes(uint256 timelockDurationinMinutes_) external onlyOwner {
         uint256 timelockDurationUpdated = timelockDurationinMinutes_ * 60;
-        if (timelockDurationinMinutes_ == 0) {
+        if (timelockDurationinMinutes_ < 1) {
             revert InvalidTimelockDuration(timelockDurationinMinutes_);
         }
         if (timelockDuration == timelockDurationUpdated) {
@@ -420,9 +413,9 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * @param maxTokens_ The maximum token supply.
      */
     /// #if_succeeds { :msg "Max tokens updated correctly" } old(maxTokens) != maxTokens;
-    function setMaxTokens(uint256 maxTokens_) external onlyOwner {
+    function setMaxTokens(uint256 maxTokens_) public onlyOwner {
         uint256 updatedTokens = maxTokens_ * 10**18;
-        if (updatedTokens == 0) {
+        if (updatedTokens < 1 * 10 ** 18) {
             revert InvalidMaxTokens(maxTokens_);
         }
         if (maxTokens == updatedTokens) {
@@ -439,7 +432,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     /// #if_succeeds { :msg "Max tokens updated correctly" } old(maxTokens) != maxTokens;
 
     function setMaxTokensPerUser(uint256 maxTokensPerUser_) external onlyOwner {
-        if (maxTokensPerUser_ == 0) {
+        if (maxTokensPerUser_ < 1) {
             revert InvalidMaxTokensPerUser(maxTokensPerUser_);
         }
         emit MaxTokensPerUserUpdated(maxTokensPerUser, maxTokensPerUser_);
@@ -451,7 +444,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * @param cliffDurationInMonths_ Duration of the cliff in months.
      */
     function setCliffDuration(uint256 cliffDurationInMonths_) external onlyOwner {
-        if (cliffDurationInMonths_ == 0) {
+        if (cliffDurationInMonths_ < 1) {
             revert InvalidCliff(cliffDurationInMonths_);
         }
         emit CliffUpdated(cliffDurationInMonths_);
@@ -502,7 +495,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      */
     /// #if_succeeds { :msg "Set price minimum correctly" } minPurchaseAmount > 0 && old(minPurchaseAmount) != minPurchaseAmount;
     function setMinimumPurchaseAmount(uint256 minPurchaseAmount_) external onlyOwner{
-        if (minPurchaseAmount_ == 0) {
+        if (minPurchaseAmount_ < 1) {
             revert InvalidMinPurchaseAmount(minPurchaseAmount_);
         }
         emit MinAmountPurchaseUpdated(minPurchaseAmount_);
@@ -564,7 +557,11 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
 
     // This function withdraw the balance in the ico contract if some balance transfer to the distributor
     // on the purchase due to net problems. Use in case of internal balance transfer failures.
-    function fallbackWithdraw() external onlyOwner whenNotPaused nonReentrant {
+    function withdraw() external onlyOwner whenNotPaused nonReentrant {
         payable(owner()).transfer(address(this).balance);
+    }
+
+    receive() external payable {
+        emit FundsReceived(_msgSender(), msg.value);
     }
 }

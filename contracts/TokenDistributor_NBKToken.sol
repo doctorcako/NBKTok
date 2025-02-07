@@ -61,7 +61,7 @@ contract TokenDistributor is Ownable, Pausable, ReentrancyGuard {
     ) Ownable(ownerWallet) {
         if (tokenAddress == address(0)) revert InvalidBeneficiary(address(0));
         if (ownerWallet == address(0)) revert InvalidBeneficiary(address(0));
-        if (_dailyLimit == 0) revert DailyLimitUpdateValueIncorrect(_dailyLimit);
+        if (_dailyLimit < 1) revert DailyLimitUpdateValueIncorrect(_dailyLimit);
 
         token = IERC20(tokenAddress);
         dailyLimit = _dailyLimit;
@@ -84,7 +84,7 @@ contract TokenDistributor is Ownable, Pausable, ReentrancyGuard {
         }
 
         if (beneficiary == address(0)) revert InvalidBeneficiary(beneficiary);
-        if (amount == 0) revert InvalidWithdrawAmount(amount);
+        if (amount < 1) revert InvalidWithdrawAmount(amount);
 
         uint256 currentBalance = token.balanceOf(address(this));
         if (currentBalance < amount) {
@@ -104,7 +104,7 @@ contract TokenDistributor is Ownable, Pausable, ReentrancyGuard {
      */
     /// #if_succeeds { :msg "Withdraw funds correctly" } old(address(this).balance) + amount == address(this).balance;
     function withdrawFunds(uint256 amount) external onlyOwner whenNotPaused nonReentrant {
-        if (amount == 0) revert InvalidWithdrawAmount(amount);
+        if (amount < 1) revert InvalidWithdrawAmount(amount);
 
         if (amount > address(this).balance) {
             revert NotEnoughEtherToWithdraw(amount);
@@ -137,7 +137,7 @@ contract TokenDistributor is Ownable, Pausable, ReentrancyGuard {
         if (to == address(0)) {
             revert InvalidBeneficiary(address(0));
         }
-        if (amount == 0) {
+        if (amount < 1) {
             revert InvalidWithdrawAmount(amount);
         }
 
@@ -193,7 +193,7 @@ contract TokenDistributor is Ownable, Pausable, ReentrancyGuard {
      */
     /// #if_succeeds { :msg "Daily limit set correctly" } old(dailyLimit) != dailyLimit;
     function setDailyLimit(uint256 dailyLimit_) external onlyOwner {
-        if (dailyLimit_ == 0) {
+        if (dailyLimit_ < 1) {
             revert DailyLimitUpdateValueIncorrect(dailyLimit_);
         }
         if (dailyLimit == dailyLimit_) {
