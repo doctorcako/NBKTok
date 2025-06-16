@@ -1,0 +1,90 @@
+<?xml version="1.0" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="278pt" height="346pt" viewBox="0.00 0.00 278.19 346.00">
+<g id="graph0" class="graph" transform="translate(4,342) scale(1)" data-name="G">
+
+<polygon fill="#2e3e56" stroke="none" points="-4,4 -4,-342 274.19,-342 274.19,4 -4,4" style=""/>
+<g id="clust1" class="cluster" data-name="clusterNBKToken">
+
+<path fill="#445773" stroke="#445773" d="M20,-8C20,-8 250.19,-8 250.19,-8 256.19,-8 262.19,-14 262.19,-20 262.19,-20 262.19,-181 262.19,-181 262.19,-187 256.19,-193 250.19,-193 250.19,-193 20,-193 20,-193 14,-193 8,-187 8,-181 8,-181 8,-20 8,-20 8,-14 14,-8 20,-8" style=""/>
+<text text-anchor="middle" x="135.1" y="-176.4" font-family="Times,serif" font-size="14.00" fill="#f0f0f0" style="">NBKToken</text>
+</g>
+<g id="clust2" class="cluster" data-name="cluster_01">
+
+<polygon fill="#2e3e56" stroke="black" points="10.53,-201 10.53,-330 255.62,-330 255.62,-201 10.53,-201" style=""/>
+<text text-anchor="middle" x="133.07" y="-313.4" font-family="Times,serif" font-size="14.00" style="">Legend</text>
+</g>
+<!-- NBKToken.&lt;Constructor&gt; -->
+<g id="node1" class="node" pointer-events="visible" data-name="NBKToken.&lt;Constructor&gt;">
+
+<ellipse fill="#ff9797" stroke="#ff9797" stroke-width="3" cx="83.53" cy="-142" rx="67.55" ry="18" style=""/>
+<text text-anchor="middle" x="83.53" y="-137.8" font-family="Times,serif" font-size="14.00" style="">&lt;Constructor&gt;</text>
+</g>
+<!-- NBKToken.mint -->
+<g id="node2" class="node" pointer-events="visible" data-name="NBKToken.mint">
+
+<ellipse fill="#ffbdb9" stroke="#ffbdb9" stroke-width="3" cx="83.53" cy="-88" rx="28.99" ry="18" style=""/>
+<text text-anchor="middle" x="83.53" y="-83.8" font-family="Times,serif" font-size="14.00" style="">mint</text>
+</g>
+<!-- NBKToken._mint -->
+<g id="node4" class="node" pointer-events="visible" data-name="NBKToken._mint">
+
+<ellipse fill="#edad56" stroke="#edad56" stroke-width="3" cx="220.62" cy="-88" rx="33.64" ry="18" style=""/>
+<text text-anchor="middle" x="220.62" y="-83.8" font-family="Times,serif" font-size="14.00" style="">_mint</text>
+</g>
+<!-- NBKToken.mint&#45;&gt;NBKToken._mint -->
+<g id="edge1" class="edge" data-name="NBKToken.mint-&gt;NBKToken._mint">
+
+<path fill="none" stroke="#1bc6a6" stroke-width="2" d="M113.84,-88C130.99,-88 153.04,-88 172.57,-88" style=""/>
+<polygon fill="#1bc6a6" stroke="#1bc6a6" stroke-width="2" points="172.57,-91.5 182.57,-88 172.57,-84.5 172.57,-91.5" style=""/>
+</g>
+<!-- NBKToken.burn -->
+<g id="node3" class="node" pointer-events="visible" data-name="NBKToken.burn">
+
+<ellipse fill="#ffbdb9" stroke="#ffbdb9" stroke-width="3" cx="83.53" cy="-34" rx="28.98" ry="18" style=""/>
+<text text-anchor="middle" x="83.53" y="-29.8" font-family="Times,serif" font-size="14.00" style="">burn</text>
+</g>
+<!-- NBKToken._burn -->
+<g id="node5" class="node" pointer-events="visible" data-name="NBKToken._burn">
+
+<ellipse fill="#edad56" stroke="#edad56" stroke-width="3" cx="220.62" cy="-34" rx="33.63" ry="18" style=""/>
+<text text-anchor="middle" x="220.62" y="-29.8" font-family="Times,serif" font-size="14.00" style="">_burn</text>
+</g>
+<!-- NBKToken.burn&#45;&gt;NBKToken._burn -->
+<g id="edge2" class="edge" data-name="NBKToken.burn-&gt;NBKToken._burn">
+
+<path fill="none" stroke="#1bc6a6" stroke-width="2" d="M113.84,-34C130.99,-34 153.04,-34 172.57,-34" style=""/>
+<polygon fill="#1bc6a6" stroke="#1bc6a6" stroke-width="2" points="172.57,-37.5 182.57,-34 172.57,-30.5 172.57,-37.5" style=""/>
+</g>
+<!-- key -->
+<g id="node6" class="node" pointer-events="visible" data-name="key">
+
+<polygon fill="#edad56" stroke="none" stroke-width="3" points="148.53,-297 18.53,-297 18.53,-209 148.53,-209 148.53,-297" style=""/>
+<text text-anchor="start" x="68.16" y="-278.4" font-family="Times,serif" font-size="14.00" style="">Internal Call</text>
+<text text-anchor="start" x="64.27" y="-258.4" font-family="Times,serif" font-size="14.00" style="">External Call</text>
+<text text-anchor="start" x="41.73" y="-238.4" font-family="Times,serif" font-size="14.00" style="">Defined Contract</text>
+<text text-anchor="start" x="28.13" y="-218.4" font-family="Times,serif" font-size="14.00" style="">Undefined Contract</text>
+</g>
+<!-- key2 -->
+<g id="node7" class="node" pointer-events="visible" data-name="key2">
+
+<polygon fill="#edad56" stroke="none" stroke-width="3" points="247.62,-297 193.62,-297 193.62,-209 247.62,-209 247.62,-297" style=""/>
+<text text-anchor="start" x="210.62" y="-278.4" font-family="Times,serif" font-size="14.00" style="">   </text>
+<text text-anchor="start" x="210.62" y="-258.4" font-family="Times,serif" font-size="14.00" style="">   </text>
+<polygon fill="#445773" stroke="none" points="208.62,-233 208.62,-253 233.62,-253 233.62,-233 208.62,-233" style=""/>
+<text text-anchor="start" x="210.62" y="-238.4" font-family="Times,serif" font-size="14.00" style="">   </text>
+<polygon fill="none" stroke="#e8726d" points="210.62,-215 210.62,-231 231.62,-231 231.62,-215 210.62,-215" style=""/>
+</g>
+<!-- key&#45;&gt;key2 -->
+<g id="edge3" class="edge" data-name="key-&gt;key2">
+
+<path fill="none" stroke="#1bc6a6" stroke-width="2" d="M141.53,-283C166.08,-283 175.24,-283 194.75,-283" style=""/>
+<polygon fill="#1bc6a6" stroke="#1bc6a6" stroke-width="2" points="194.6,-286.5 204.6,-283 194.6,-279.5 194.6,-286.5" style=""/>
+</g>
+<!-- key&#45;&gt;key2 -->
+<g id="edge4" class="edge" data-name="key-&gt;key2">
+
+<path fill="none" stroke="white" stroke-width="2" d="M141.53,-263C166.08,-263 175.24,-263 194.75,-263" style=""/>
+<polygon fill="white" stroke="white" stroke-width="2" points="194.6,-266.5 204.6,-263 194.6,-259.5 194.6,-266.5" style=""/>
+</g>
+</g>
+</svg>

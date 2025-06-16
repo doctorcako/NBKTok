@@ -5,7 +5,7 @@ dotenv.config();
 const NBKTokenModule = buildModule("NBKTokenModule", (m) => {
     const name = m.getParameter("_name", "NBKToken");
     const symbol = m.getParameter("_symbol", "NBK");
-    const ownerWallet = m.getParameter("ownerWallet",process.env.OWNER_ADDRESS);
+    const ownerWallet = m.getParameter("ownerWallet",process.env.OWNER_ADDRESS_TESTNET);
 
     const nbk_token = m.contract("NBKToken", [name, symbol, ownerWallet]);
 

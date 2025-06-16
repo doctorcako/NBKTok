@@ -1,19 +1,104 @@
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.23;
 
-import {VestingSchedule} from  "./libraries/VestingSchedule_NBKToken.sol";
-import {TokenDistributor} from "./TokenDistributor_NBKToken.sol";
-import {Address} from "@openzeppelin/contracts/utils/Address.sol";
-import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+// SPDX-License-Identifier: MIT
+import "./TokenDistributorTest.sol";
+import "./Dependencies.sol";
+
+
+pragma solidity ^0.8.20;
 
 /**
- * @title IcoNBKToken
- * @dev Contract that handles token sales in an ICO with options for vesting and whitelisting.
- * @custom:security-contact dariosansano@neuro-block.com
+ * @title VestingSchedule
+ * @notice Library for managing vesting schedules, including the creation of vesting data and calculating releasable tokens.
+ * 
+ * Provides functionality to:
+ * - Create a vesting schedule with a total amount, cliff time, and duration.
+ * - Calculate how many tokens are releasable based on elapsed time and vesting intervals.
  */
+library VestingSchedule {
+
+    struct VestingData {
+        uint256 totalAmount;      // Total amount of tokens to be vested
+        uint256 claimedAmount;    // Amount of tokens already claimed
+        uint256 startTime;        // Timestamp when the vesting started
+        uint256 cliffInMonths;   // Cliff duration in months before any tokens can be claimed
+        uint256 durationInMonths; // Total duration of the vesting period in months
+    }
+
+    struct VestingInterval {
+        uint256 endMonth;         // The month ending this vesting interval
+        uint256 unlockPerMonth;   // Percentage of totalAmount to unlock per month in this interval
+    }
+
+    error InvalidCliffTime(uint256 cliff, uint256 amount );
+
+    /**
+     * @dev Creates a vesting schedule for an address. Ensures that the cliff time is less than the total vesting duration.
+     * 
+     * @param totalAmount The total amount of tokens to be vested.
+     * @param cliff Duration in months before any tokens are unlocked.
+     * @param duration Total duration of the vesting period in months.
+     * 
+     * @return vestingData The created vesting data for the user.
+     * 
+     * @notice Reverts if the cliff time is greater than or equal to the total vesting duration.
+     */
+    function createVesting(uint256 totalAmount, uint256 cliff, uint256 duration) internal view returns (VestingData memory) {
+        if(cliff >= duration){
+            revert InvalidCliffTime(cliff, duration);
+        }
+        VestingData memory vestingData = VestingData({
+            totalAmount: totalAmount,
+            claimedAmount: 0,
+            startTime: block.timestamp,
+            cliffInMonths: cliff,
+            durationInMonths: duration
+        });
+
+        return vestingData;
+    }
+
+    /**
+     * @dev Calculates the amount of tokens that can be claimed based on the vesting schedule and vesting intervals.
+     * 
+     * @param vesting The vesting data for the user.
+     * @param vestingIntervals The array of vesting intervals with unlock percentages.
+     * 
+     * @return releasableTokens The number of tokens that can be claimed based on the elapsed time and intervals.
+     * 
+     * @notice Reverts if the tokens are still locked due to the cliff.
+     */
+    function calculateReleasable(VestingData memory vesting, VestingInterval[] memory vestingIntervals) internal view returns (uint256) {
+        // Verificar si estamos dentro del período de cliff
+        if (block.timestamp < vesting.startTime + vesting.cliffInMonths * 30 days) {
+            return 0; // Tokens aún bloqueados por el cliff
+        }
+
+        uint256 elapsedMonths = (block.timestamp - (vesting.startTime + (vesting.cliffInMonths * 30 days))) / 30 days; // Calcular meses transcurridos
+        if (elapsedMonths > vesting.durationInMonths) {
+            elapsedMonths = vesting.durationInMonths;
+        }
+
+        uint256 totalUnlockedPercentage = 0; // Porcentaje acumulado desbloqueado
+        uint256 vestingIntervalsLength = vestingIntervals.length;
+
+        for (uint256 i; i < vestingIntervalsLength; i++) {
+            VestingInterval memory interval = vestingIntervals[i];
+
+            if (elapsedMonths >= interval.endMonth) {
+                totalUnlockedPercentage += (interval.endMonth - (i == 0 ? 0 : vestingIntervals[i - 1].endMonth)) * interval.unlockPerMonth;
+            } else {
+                // Si aún estamos dentro de este intervalo, desbloquear proporcionalmente
+                uint256 monthsInInterval = elapsedMonths - (i == 0 ? 0 : vestingIntervals[i - 1].endMonth);
+                totalUnlockedPercentage += monthsInInterval * interval.unlockPerMonth;
+                break;
+            }
+        }
+        // Calcular tokens desbloqueados basados en el porcentaje total desbloqueado
+        uint256 totalUnlockedTokens = (vesting.totalAmount * totalUnlockedPercentage) / 100_000;
+        return totalUnlockedTokens > vesting.claimedAmount ? totalUnlockedTokens - vesting.claimedAmount : 0;
+    }
+}
+
 contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
 
     struct Purchase {
@@ -23,7 +108,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
 
     /// @notice Address of the token distributor.
     /// @dev It is an immutable and payable address.
-    address payable immutable private tokenDistributorAddress;
+    address payable immutable public tokenDistributorAddress;
 
     /// @notice Instance of the TokenDistributor contract.
     /// @dev Used to manage the distribution of tokens.
@@ -55,6 +140,9 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     /// @notice Time lock duration before tokens can be accessed.
     uint256 public timelockDuration;
 
+    /// @notice Conversion rate of ETH to tokens.
+    uint256 public rate;
+
     /// @notice Minimum purchase amount required.
     uint256 public minPurchaseAmount;
 
@@ -68,7 +156,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     bool public vestingEnabled;
 
     /// @notice Stores public ICO user balances.
-    mapping(address user => uint256 balance) private icoPublicUserBalances;
+    mapping(address user => uint256 balance) public icoPublicUserBalances;
 
     /// @notice Whitelist mapping to check if an address is allowed to participate.
     mapping(address user => bool whitelisted) public whitelist;
@@ -83,7 +171,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     mapping(uint256 currentPhase => mapping(address user => VestingSchedule.VestingInterval[] vestingIntervalAssigned)) public phaseUserVestings;
 
     /// @notice Array of unlock vesting intervals.
-    VestingSchedule.VestingInterval[] private unlockVestingIntervals;
+    VestingSchedule.VestingInterval[] public unlockVestingIntervals;
 
     uint256 public uniqueInvestors;
    
@@ -132,6 +220,9 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     // Purchase related
     /// @notice Emitted when the minimum purchase amount is updated.
     event MinAmountPurchaseUpdated(uint256 indexed minAmount);
+
+    /// @notice Emitted when the ETH-to-token conversion rate is updated.
+    event RateUpdated(uint256 indexed oldRate, uint256 indexed newRate);
 
     /// @notice Emitted when funds are received from an investor.
     event FundsReceived(address indexed sender, uint256 indexed amount);
@@ -221,6 +312,12 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     /// @notice Thrown when an invalid address is used.
     error InvalidAddress(address account);
 
+    /// @notice Thrown when an invalid rate value is set.
+    error InvalidRateValue(uint256 rate);
+
+    /// @notice Thrown when the rate value remains unchanged.
+    error RateNotChanged(uint256 rate);
+
     /// @notice Thrown when the timelock duration is invalid.
     error InvalidTimelockDuration(uint256 duration);
 
@@ -229,6 +326,12 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
 
     /// @notice Thrown when not correct referred address
     error InvalidReferedAddress(address refered);
+
+
+    modifier onlyICOorOwner () {
+        if((_msgSender() != address(this)) && (_msgSender() != owner())) revert NotICOorOwnerContractCalling(_msgSender());
+        _;
+    }
 
     /**
      * @dev Constructor to initialize the ICO contract.
@@ -250,6 +353,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
         
         startTime = block.timestamp + secondsICOwillStart_; // dentro de x segundos
         endTime = startTime + (icoDurationInDays_ * 24 * 60 * 60); 
+        rate = 1000; // 1 ETH = 1000 tokens
         maxTokens = 1_000_000 * 10**18; // 1 million tokens
         maxTokensPerUser = 10_000 * 10**18; // 10,000 tokens per user
         timelockDuration = 1 * 60 * 60; // 1 hour between purchases  
@@ -279,71 +383,41 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     /// #if_succeeds { :msg "Tokens bought correctly" } tokensBought == true;
     /// #if_succeeds { :msg "Tokens sold in ICO" }  old(soldTokens) < soldTokens;
     /// #if_succeeds { :msg "ETH transfered to distributor" }  old(address(tokenDistributorAddress).balance) < address(tokenDistributorAddress).balance;
-    function buyTokens(
-        uint256 purchaseRate,
-        uint256 referedPercentage,
-        address referedUser
-    ) external payable whenNotPaused nonReentrant {
-        uint256 tokensToBuyInWei = msg.value * purchaseRate;
+    function buyTokens(uint256 purchaseRate, uint256 referedPercentage, address referedUser) public payable whenNotPaused nonReentrant{
+        uint256 tokensToBuyInWei = (msg.value * purchaseRate);
         address investor = _msgSender();
-
         checkValidPurchase(investor, tokensToBuyInWei);
 
         if (vestingEnabled) {
-            // Vesting maneja internamente la lógica de tokens
-            assignVestingInternal(
-                investor,
-                tokensToBuyInWei,
-                cliffDurationInMonths,
-                vestingDurationInMonths,
-                true,
-                referedUser,
-                referedPercentage
-            );
+            assignVestingInternal(investor,tokensToBuyInWei, cliffDurationInMonths, vestingDurationInMonths, true, referedUser,referedPercentage);
         } else {
-            if (
-                icoPublicUserBalances[investor] != 0 &&
-                (icoPublicUserBalances[investor] + tokensToBuyInWei > maxTokensPerUser)
-            ) {
+            if (icoPublicUserBalances[investor] != 0 && (icoPublicUserBalances[investor]) + (tokensToBuyInWei)  > maxTokensPerUser){
                 revert TotalAmountPurchaseExceeded(investor, tokensToBuyInWei);
             }
-
             icoPublicUserBalances[investor] += tokensToBuyInWei;
-
-            if (referedUser != address(0)) {
-                if (referedUser == investor) {
-                    revert InvalidReferedAddress(referedUser);
-                }
-            }
         }
 
-        // Efectos antes de interacciones
         soldTokens += tokensToBuyInWei;
 
-        if (purchases[investor].tokens == 0) {
+        if(purchases[investor].tokens == 0){
             ++uniqueInvestors;
             purchases[investor].timestamp = block.timestamp;
             purchases[investor].tokens = tokensToBuyInWei;
         }
-
+        
         emit SoldTokensUpdated(soldTokens - tokensToBuyInWei, soldTokens);
+        Address.sendValue(tokenDistributorAddress,msg.value);
+        if(!vestingEnabled)tokenDistributor.distributeTokens(investor, tokensToBuyInWei);
 
-        // 🔒 Todas las interacciones después del estado
-
-        // 1. Transferir fondos al distributor
-        Address.sendValue(tokenDistributorAddress, msg.value);
-
-        // 2. Distribuir tokens si NO hay vesting
-        if (!vestingEnabled) {
-            if (referedUser != address(0) && referedUser != investor) {
-                uint256 tokensForReferred = Math.mulDiv(tokensToBuyInWei, referedPercentage, 100);
+        if (address(referedUser) != address(0)){
+            if(address(referedUser) == address(investor)){
+                revert InvalidReferedAddress(referedUser);
+            }else{
+                uint256 tokensForReferred = Math.mulDiv(tokensToBuyInWei,referedPercentage,100);                
                 tokenDistributor.distributeTokens(referedUser, tokensForReferred);
             }
-
-            tokenDistributor.distributeTokens(investor, tokensToBuyInWei);
         }
     }
-
  
 
     /**
@@ -411,7 +485,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
         return true;
     }
 
-    function assignVesting(address investor, uint256 amount, uint256 cliff, uint256 duration, bool isPurchase, address referedUser, uint256 referedPercentage) external onlyOwner {
+    function assignVesting(address investor, uint256 amount, uint256 cliff, uint256 duration, bool isPurchase, address referedUser, uint256 referedPercentage) public onlyOwner {
         assignVestingInternal(investor, amount, cliff, duration, isPurchase, referedUser, referedPercentage);
     }
 
@@ -448,10 +522,13 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
                     if(address(referedUser) == address(investor)){
                         revert InvalidReferedAddress(referedUser);
                     }else{
-                        uint256 tokensForReferred = Math.mulDiv(amount,referedPercentage,100);                
-                        VestingSchedule.VestingData memory referredVesting = VestingSchedule.createVesting(tokensForReferred, cliff, duration);
-                        vestings[currentPhaseInterval][referedUser] = referredVesting;
-                        phaseUserVestings[currentPhaseInterval][referedUser] = unlockVestingIntervals;
+                        uint256 tokensForReferred;
+                        if (referedPercentage < 0) {
+                            tokensForReferred = Math.mulDiv(amount,referedPercentage,100); 
+                            VestingSchedule.VestingData memory referredVesting = VestingSchedule.createVesting(tokensForReferred, cliff, duration);
+                            vestings[currentPhaseInterval][referedUser] = referredVesting;
+                            phaseUserVestings[currentPhaseInterval][referedUser] = unlockVestingIntervals;
+                        }                
                     }
                 }
 
@@ -473,7 +550,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * @notice Only the owner can update vesting intervals.
      */
     /// #if_succeeds { :msg "Vesting configuration set " } intervals[intervals.length -1].endMonth == vestingDurationInMonths;
-    function setVestingConfiguration(uint256 vestingDurationInMonths_, VestingSchedule.VestingInterval[] memory intervals) external onlyOwner {
+    function setVestingConfiguration(uint256 vestingDurationInMonths_, VestingSchedule.VestingInterval[] memory intervals) public onlyOwner {
         uint256 totalPercentage;
         uint256 lastEndMonth;
         uint256 intervalsLength = intervals.length;
@@ -506,8 +583,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
             lastEndMonth = intervals[i].endMonth;
         }
 
-        uint256 percentageTotal = totalPercentage/1000;
-        if ( percentageTotal != 100) { // 3 decimales
+        if (totalPercentage/1000 != 100) { // 3 decimales
             revert TotalPercentageIntervalsNotEqualTo100(totalPercentage);
         }
 
@@ -526,7 +602,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * @param enabled Boolean value to enable or disable the address.
      */
     /// #if_succeeds { :msg "Account added to whitelist" } old(whitelist[account]) != whitelist[account];
-    function setWhitelist(address account, bool enabled) external onlyOwner {
+    function setWhitelist(address account, bool enabled) public onlyOwner {
         if (account == address(0)) {
             revert InvalidAddress(account);
         }
@@ -546,7 +622,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * @param enabled Boolean value to enable or disable the addresses.
      */
     /// #if_succeeds { :msg "Perform batch whitelist" } batchPerformed == true;
-    function setWhitelistBatch(address[] memory accounts, bool enabled) external onlyOwner{
+    function setWhitelistBatch(address[] memory accounts, bool enabled) public onlyOwner{
         uint256 accountsLength = accounts.length;
         if (accountsLength == 0) {
             revert InvalidWhitelistArrayInput();
@@ -567,7 +643,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * @param timelockDuration_ The new timelock duration in seconds.
      */
     /// #if_succeeds { :msg "Timelock duration change correctly" } old(timelockDuration) != timelockDuration;
-    function setTimelockDurationInMinutes(uint256 timelockDurationinMinutes_) external onlyOwner {
+    function setTimelockDurationInMinutes(uint256 timelockDurationinMinutes_) public onlyOwner {
         uint256 timelockDurationUpdated = timelockDurationinMinutes_ * 60;
         if (timelockDurationinMinutes_ < 1) {
             revert InvalidTimelockDuration(timelockDurationinMinutes_);
@@ -584,7 +660,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * @param maxTokens_ The maximum token supply.
      */
     /// #if_succeeds { :msg "Max tokens updated correctly" } old(maxTokens) != maxTokens;
-    function setMaxTokens(uint256 maxTokens_) external onlyOwner {
+    function setMaxTokens(uint256 maxTokens_) public onlyOwner {
         uint256 updatedTokens = maxTokens_ * 10**18;
         if (updatedTokens < 1 * 10 ** 18) {
             revert InvalidMaxTokens(maxTokens_);
@@ -601,7 +677,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * @param maxTokensPerUser_ The maximum token limit per user.
      */
     /// #if_succeeds { :msg "Max tokens updated correctly" } old(maxTokens) != maxTokens;
-    function setMaxTokensPerUser(uint256 maxTokensPerUser_) external onlyOwner {
+    function setMaxTokensPerUser(uint256 maxTokensPerUser_) public onlyOwner {
         if (maxTokensPerUser_ < 1) {
             revert InvalidMaxTokensPerUser(maxTokensPerUser_);
         }
@@ -613,7 +689,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * @dev Sets the cliff duration for vesting.
      * @param cliffDurationInMonths_ Duration of the cliff in months.
      */
-    function setCliffDuration(uint256 cliffDurationInMonths_) external onlyOwner {
+    function setCliffDuration(uint256 cliffDurationInMonths_) public onlyOwner {
         if (cliffDurationInMonths_ < 1) {
             revert InvalidCliff(cliffDurationInMonths_);
         }
@@ -626,7 +702,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * @param whitelistEnabled_ Boolean value to enable or disable the whitelist.
      */
     /// #if_succeeds { :msg "Whitelist enabled should change" } old(whitelistEnabled) != whitelistEnabled;
-    function setWhitelistEnabled(bool whitelistEnabled_) external onlyOwner {
+    function setWhitelistEnabled(bool whitelistEnabled_) public onlyOwner {
         if(whitelistEnabled == whitelistEnabled_) revert WhitelistEnabledConfigNotChanging(whitelistEnabled_);
         emit WhitelistStatusUpdated(whitelistEnabled, whitelistEnabled_);
         whitelistEnabled = whitelistEnabled_;
@@ -637,7 +713,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * @param vestingEnabled_ Boolean value to enable or disable vesting.
      */
     /// #if_succeeds { :msg "Vesting enabled should change" } old(vestingEnabled) != vestingEnabled;
-    function setVestingEnabled(bool vestingEnabled_) external onlyOwner {
+    function setVestingEnabled(bool vestingEnabled_) public onlyOwner {
         if(vestingEnabled == vestingEnabled_) revert VestingEnabledConfigNotChanging(vestingEnabled_);
         emit VestingStatusUpdated(vestingEnabled, vestingEnabled_);
         vestingEnabled = vestingEnabled_;
@@ -649,7 +725,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * @param endTime_ The end time of the ICO.
      */
     /// #if_succeeds { :msg "Set ICO Period Correctly " } startTime < endTime && startTime > block.timestamp;
-    function setICOPeriod(uint256 startTime_, uint256 endTime_) external onlyOwner {
+    function setICOPeriod(uint256 startTime_, uint256 endTime_) public onlyOwner {
         if(endTime_ <= startTime_) revert InvalidICOPeriod(startTime_, endTime_);
         if(startTime_ < block.timestamp) revert InvalidICOPeriod(startTime_, endTime_);
         startTime = startTime_;
@@ -662,7 +738,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * @param minPurchaseAmount_ The minimum purchase amount in wei.
      */
     /// #if_succeeds { :msg "Set price minimum correctly" } minPurchaseAmount > 0 && old(minPurchaseAmount) != minPurchaseAmount;
-    function setMinimumPurchaseAmount(uint256 minPurchaseAmount_) external onlyOwner{
+    function setMinimumPurchaseAmount(uint256 minPurchaseAmount_) public onlyOwner{
         if (minPurchaseAmount_ < 1) {
             revert InvalidMinPurchaseAmount(minPurchaseAmount_);
         }
@@ -679,7 +755,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * @return _soldTokens Number of tokens minted so far.
      */
     /// #if_succeeds { :msg "Get ICO info correct" } _startTime > block.timestamp && _endTime < block.timestamp && _maxTokensPerUser > 0 && _maxTokens >= soldTokens;
-    function getICOInfo() external view returns (
+    function getICOInfo() public view returns (
         uint256 _startTime,
         uint256 _endTime,
         uint256 _maxTokens,
@@ -705,7 +781,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * @return The number of releasable tokens.
      */
     /// #if_succeeds { :msg "getReleasableTokens correctly" } releasable >= 0;
-    function getReleasableTokens(address beneficiary) external view returns (uint256 releasable) {
+    function getReleasableTokens(address beneficiary) public view returns (uint256 releasable) {
         uint256 totalReleasable;
 
         for (uint256 i; i <= currentPhaseInterval; ++i) {
@@ -722,7 +798,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * @return The number of purchased tokens.
      */
     /// #if_succeeds { :msg "getReleasableTokens correctly" } releasable >= 0;
-    function getVestedAmount(address beneficiary) external view returns (uint256 totalAmount) {
+    function getVestedAmount(address beneficiary) public view returns (uint256 totalAmount) {
         uint256 totalVested;
         //get all vestings from all phases
         for (uint256 i; i <= currentPhaseInterval; ++i){
@@ -735,14 +811,14 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     /**
      * @dev Pause contract
      */
-    function pause() external onlyOwner {
+    function pause() public onlyOwner {
         _pause();
     }
 
     /**
      * @dev Unpause contract
      */
-    function unpause() external onlyOwner {
+    function unpause() public onlyOwner {
         _unpause();
     }
 
@@ -750,7 +826,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * @dev This function withdraw the balance in the ico contract if some balance transfer to the distributor
      * on the purchase due to net problems. Use in case of internal balance transfer failures.
      */
-    function withdraw() external onlyOwner whenNotPaused nonReentrant {
+    function withdraw() public onlyOwner whenNotPaused nonReentrant {
         Address.sendValue(payable(owner()),address(this).balance);
     }
 
@@ -762,3 +838,223 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     }
 }
 
+
+contract MockTokenDistributor is TokenDistributor {
+    MockToken public testToken;
+    constructor() TokenDistributor(address(new MockToken()), _msgSender(), 10 * 10**18) {
+        testToken = MockToken(address(token)); // Guardar referencia al token
+        testToken.mint(address(_msgSender()), 1_000_000);
+    }
+}
+
+contract IcoNBKTokenTest is IcoNBKToken {
+    MockTokenDistributor public  mockTokenDistributor;
+
+    constructor() IcoNBKToken(
+        address(new MockTokenDistributor()),
+        _msgSender(),
+        0,
+        30
+    ) {
+        mockTokenDistributor = MockTokenDistributor(tokenDistributorAddress);
+        VestingSchedule.VestingInterval memory v = VestingSchedule.VestingInterval(10, 10); // Ejemplo de valores: desbloqueo en el mes 10 con 10% por mes
+        unlockVestingIntervals.push(v);
+    }
+
+
+    function echidna_test_invalid_cliff() public returns (bool) {
+        (bool success, ) = address(this).call(
+            abi.encodeWithSignature("createVesting(uint256,uint256,uint256)", 1000, 12, 6)
+        );
+        return !success; // El test pasa si la transacción falla (revierte)
+    }
+
+    function echidna_test_vesting_assignment() public returns (bool) {
+
+        if(!vestingEnabled) {
+            return true;
+        }
+
+        if(_msgSender() != owner() || _msgSender() != address(this)){
+            return true;
+        }
+
+
+        assignVesting(_msgSender(),1000,3,12,false, address(0), 0);
+        VestingSchedule.VestingData memory vesting = vestings[0][_msgSender()];
+
+        // Verificamos que los valores sean correctos
+        return (
+            vesting.totalAmount == 1000 &&
+            vesting.claimedAmount == 0 &&
+            vesting.cliffInMonths == 3 &&
+            vesting.durationInMonths == 12 &&
+            vesting.startTime > 0
+        );
+    }
+
+    function echidna_test_ico_period_correct() public view returns (bool) {
+        return startTime < endTime;
+    }
+
+    function echidna_test_max_tokens_per_user() public view returns (bool) {
+        address investor = address(this); // Simulación de usuario de prueba
+        uint256 maxPerUser = maxTokensPerUser;
+        uint256 tokensBought = icoPublicUserBalances[investor];
+
+        return tokensBought <= maxPerUser;
+    }
+
+    function echidna_test_total_tokens_sold_does_not_exceed_max() public view returns (bool) {
+        return soldTokens <= maxTokens;
+    }
+
+    function echidna_test_no_purchase_with_zero_eth() public returns (bool) {
+        (bool success,) = _msgSender().call{value:0}(abi.encodeWithSignature("buyTokens()"));
+        return success;
+    }
+
+    function echidna_test_claim_tokens() public view returns (bool) {
+        if(_msgSender() != owner() || _msgSender() != address(this)){
+            return true;
+        }
+        if (!vestingEnabled) return true;
+
+        VestingSchedule.VestingData memory vesting = VestingSchedule.VestingData({
+            totalAmount: 1000,
+            claimedAmount: 0,
+            startTime: block.timestamp - (180 days), // Hace 6 meses
+            cliffInMonths: 3,
+            durationInMonths: 12
+        });
+
+        VestingSchedule.VestingInterval[] memory vestingIntervals;
+        vestingIntervals[0] = VestingSchedule.VestingInterval({endMonth: 6, unlockPerMonth: 10});
+        vestingIntervals[1] = VestingSchedule.VestingInterval({endMonth: 12, unlockPerMonth: 20});
+
+        // Tokens que pueden ser reclamados
+        uint256 releasableTokens = getReleasableTokens(_msgSender());
+
+        // Simula el reclamo de tokens
+        uint256 claimedTokens = vesting.claimedAmount + releasableTokens;
+
+        // Asegura que los tokens reclamados no superen el total permitido
+        return claimedTokens <= vesting.totalAmount;
+    }
+
+    function echidna_test_whitelist_restriction() public returns (bool) {
+        // Si la whitelist está habilitada, los usuarios que no estén en ella no deberían poder comprar tokens.
+        if (whitelistEnabled) {
+            if (_msgSender() != owner()){
+                return true;
+            }
+
+            setWhitelist(_msgSender(), true);
+            return whitelist[_msgSender()]; // True si está en whitelist, False si no
+        }
+        return true; // Si la whitelist está deshabilitada, cualquiera puede comprar, por lo que la prueba pasa.
+    }
+
+    /// @notice Verifica que la whitelist se pueda actualizar correctamente
+    function echidna_test_add_remove_whitelist() public returns (bool) {
+        if (_msgSender() != owner()){
+            return true;
+        }
+        bool wasWhitelisted = whitelist[_msgSender()];
+
+        // Alternar estado en la whitelist
+        setWhitelist(_msgSender(), !wasWhitelisted);
+        // Verificar que el estado cambió
+        return whitelist[_msgSender()] != wasWhitelisted;
+    }
+
+    function echidna_test_vesting_configuration() public returns (bool) {
+
+        if(_msgSender() != owner() || _msgSender() != address(this)) return true;
+        if(!vestingEnabled) return true;
+
+        VestingSchedule.VestingInterval[] memory intervals;
+        intervals[0] = VestingSchedule.VestingInterval({ endMonth: 6, unlockPerMonth: 7000 });
+        intervals[1] = VestingSchedule.VestingInterval({ endMonth: 7, unlockPerMonth: 8000 });
+        intervals[2] = VestingSchedule.VestingInterval({ endMonth: 12, unlockPerMonth: 10000 });
+
+        setVestingConfiguration(12, intervals);
+        return unlockVestingIntervals.length > 0 && vestingDurationInMonths == intervals[intervals.length-1].endMonth;
+    }
+
+
+    function echidna_test_whitelist_toggle() public returns (bool) {
+        if(_msgSender() != owner()) return true;
+        bool wasWhitelisted = whitelist[_msgSender()];
+        setWhitelist(_msgSender(), !wasWhitelisted);
+        return whitelist[_msgSender()] != wasWhitelisted;
+    }
+
+    function echidna_test_whitelist_batch() public returns (bool) {
+        if(_msgSender() != owner() || _msgSender() != address(this)){
+            return true;
+        }
+        if(!whitelistEnabled) return true;
+        address[] memory accounts;
+        accounts[0] = address(0x123);
+        accounts[1] = address(0x456);
+        
+        setWhitelistBatch(accounts, true);
+        return whitelist[accounts[0]] && whitelist[accounts[1]];
+    }
+
+    function echidna_test_set_timelock() public returns (bool) {
+        if(_msgSender() != owner()) return true;
+        setTimelockDurationInMinutes(5);
+        return timelockDuration == 5 * 60;
+    }
+
+    function echidna_test_set_max_tokens() public returns (bool) {
+        if(_msgSender() != owner()) return true;
+        uint256 newMax = maxTokens + 10**18;
+        setMaxTokens(newMax);
+        return maxTokens != newMax;
+    }
+
+    function echidna_test_set_max_tokens_per_user() public returns (bool) {
+        if(_msgSender() != owner()) return true;
+        uint256 newMax = maxTokensPerUser + 10**18;
+        setMaxTokensPerUser(newMax);
+        return maxTokensPerUser != newMax;
+    }
+
+    function echidna_test_set_cliff_duration() public returns (bool) {
+        if (owner() != _msgSender()) return true;
+        setCliffDuration(5);
+        return cliffDurationInMonths == 5;
+    }
+
+    function echidna_test_whitelist_enabled_toggle() public returns (bool) {
+        if(_msgSender() != owner()) return true;
+        bool oldStatus = whitelistEnabled;
+        setWhitelistEnabled(!oldStatus);
+        return whitelistEnabled != oldStatus;
+    }
+
+    function echidna_test_vesting_enabled_toggle() public returns (bool) {
+        if(_msgSender() != owner()) return true;
+        bool oldStatus = vestingEnabled;
+        setVestingEnabled(!oldStatus);
+        return vestingEnabled != oldStatus;
+    }
+
+    function echidna_test_set_ico_period() public returns (bool) {
+        if(_msgSender() != owner()) return true;
+        uint256 newStartTime = block.timestamp + 10;
+        uint256 newEndTime = newStartTime + 100;
+        setICOPeriod(newStartTime, newEndTime);
+        return startTime == newStartTime && endTime == newEndTime;
+    }
+
+    function echidna_test_set_minimum_purchase() public returns (bool) {
+        if(_msgSender() != owner()) return true;
+        setMinimumPurchaseAmount(1 ether);
+        return minPurchaseAmount == 1 ether;
+    }
+
+}

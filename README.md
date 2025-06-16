@@ -15,6 +15,13 @@ npm install
 ```
 3. Generar un archivo `.env` a partir del archivo `.env.example`
 
+4. Crear un entorno de python para uso de herramientas de analisis de código.
+```bash
+python3 -m venv testing-env
+source testing-env/bin/activate
+pip3 install -no-cache-dir -r requirements.txt
+```
+
 ## **Estructura del proyecto**
 
 ### **Carpetas principales**
@@ -65,3 +72,40 @@ npm install
 ### **Validar código del Smart Contract**
 - **`npx hardhat verify --network <network-defined-on-hardhat-config> CONTRACT_ADDRESS "Arg1" "Arg2"`**
   Verifica el código en Etherscan u otro Explorador de bloques haciéndolo publico y accesible.
+
+
+## **Testing**
+Inicializar el entorno:
+```bash
+source testing-env/bin/activate
+```
+
+### Fuzzing con Echidna
+1. Instalar dependencias
+```bash
+pip3 install slither-analyzer --user
+```
+
+2. Instalar para MacOS/Linux
+```bash
+#Con Homebrew
+brew install echidna
+
+#Otro con Linux
+apt-get install echidna
+```
+
+3. Ejecutar
+```bash
+echidna /folder/to/contract.sol --contract TestContract --workers N # mas workers mas posibilidades de prueba
+```
+* Contracts: 
+  * NBKTokenTest -- /tests/echidna/NBKTokenTest.sol
+  * TokenDistributorTest -- /tests/echidna/TokenDistributorTest.sol
+  * IcoNBKTokenTest -- /tests/echidna/IcoTokenTest.sol
+
+### Análisis de vulnerabilidades y codigo estático
+Usar slither
+```bash
+slither . --filter-paths "node_modules" --exclude-dependencies
+```

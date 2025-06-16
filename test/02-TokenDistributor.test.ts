@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { TestLogger } from "./helpers/TestLogger";
 import { time } from "@nomicfoundation/hardhat-network-helpers";
+import { token } from "../typechain-types/@openzeppelin/contracts";
 
 describe("TokenDistributor", function () {
     const CONTRACT_NAME = "TokenDistributor";
@@ -179,35 +180,6 @@ describe("TokenDistributor", function () {
             }
         });
 
-        // it("Should handle batch distribution correctly", async function () {
-        //     try {
-        //         // Because dailyLimit=100, let's keep total <= 100 in batch
-        //         const addresses = [addr1.address, addr2.address, addr3.address];
-        //         const amounts = [
-        //             ethers.parseEther("30"),
-        //             ethers.parseEther("20"),
-        //             ethers.parseEther("50")
-        //         ]; // sum = 100
-
-        //         await tokenDistributor.distributeTokensBatch(addresses, amounts);
-
-        //         // Check final balances
-        //         for (let i = 0; i < addresses.length; i++) {
-        //             expect(await nbkToken.balanceOf(addresses[i])).to.equal(amounts[i]);
-        //         }
-
-        //         // Check revert on mismatch arrays
-        //         await expect(tokenDistributor.distributeTokensBatch(addresses, amounts.slice(0, 2)))
-        //             .to.be.revertedWithCustomError(tokenDistributor, "ArrayMismatchBatchDistribution")
-        //             .withArgs(3, 2);
-
-        //         TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", Number(0));
-        //     } catch (error) {
-        //         TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", Number(0), error);
-        //         throw error;
-        //     }
-        // });
-
         it("Should handle distribution limits and errors correctly", async function () {
             try {
                 const exceedingAmount = ethers.parseEther("101");
@@ -249,39 +221,6 @@ describe("TokenDistributor", function () {
                 throw error;
             }
         });
-
-        // it("Should optimize gas usage in batch distributions", async function () {
-        //     try {
-        //         const batchSize = 10;
-        //         const addresses = Array(batchSize).fill(addr1.address);
-        //         const amounts = Array(batchSize).fill(ethers.parseEther("1")); // sum=10, safe for dailyLimit=100
-
-        //         // Gas measurement for single distributions
-        //         let totalGasIndividual = BigInt(0);
-        //         for (let i = 0; i < batchSize; i++) {
-        //             const tx = await tokenDistributor.distributeTokens(addresses[i], amounts[i]);
-        //             const receipt = await tx.wait();
-        //             totalGasIndividual += receipt.gasUsed;
-        //         }
-
-        //         // Gas measurement for batch
-        //         // Need to re-fund the distributor because it used tokens above
-        //         // Re-mint or reset? For simplicity, let's just re-mint some tokens
-        //         await nbkToken.mint(await tokenDistributor.getAddress(), ethers.parseEther("100"));
-
-        //         // const batchTx = await tokenDistributor.distributeTokensBatch(addresses, amounts);
-        //         const batchReceipt = await batchTx.wait();
-        //         const batchGas = batchReceipt.gasUsed;
-
-        //         // Check that batch uses less gas
-        //         expect(batchGas).to.be.lt(totalGasIndividual);
-
-        //         TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", Number(0));
-        //     } catch (error) {
-        //         TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", Number(0), error);
-        //         throw error;
-        //     }
-        // });
 
         it("Should handle complex distribution patterns", async function () {
             try {
@@ -326,9 +265,14 @@ describe("TokenDistributor", function () {
                     to: await tokenDistributor.getAddress(),
                     value: ethers.parseEther("600")
                 })
-                const withdrawAmount = ethers.parseEther("5"); // fully use daily limit = 100 or partially
-                await tokenDistributor.withdrawFunds(withdrawAmount);
 
+                await tokenDistributor.connect(owner).pauseDistributor()
+
+                const withdrawAmount = ethers.parseEther("5"); // fully use daily limit = 100 or partially
+                await expect(tokenDistributor.withdrawFunds(withdrawAmount)).to.be.revertedWithCustomError(tokenDistributor, "EnforcedPause");
+
+                await tokenDistributor.connect(owner).unpauseDistributor()
+                await tokenDistributor.withdrawFunds(withdrawAmount)
                 // Check daily limit
                 const remainingLimit = await tokenDistributor.getRemainingDailyLimit();
                 expect(remainingLimit).to.equal(DAILY_LIMIT - withdrawAmount);
@@ -547,36 +491,6 @@ describe("TokenDistributor", function () {
     });
 
     describe("Gas Optimization and Performance", function () {
-        // it("Should optimize gas usage for bulk operations", async function () {
-        //     try {
-        //         const users = 5;
-        //         const amount = ethers.parseEther("1");
-                
-        //         const addresses = Array(users).fill(addr1.address);
-        //         const amounts = Array(users).fill(amount);
-
-        //         let totalGasIndividual = BigInt(0);
-        //         for (let i = 0; i < users; i++) {
-        //             const tx = await tokenDistributor.distributeTokens(addresses[i], amounts[i]);
-        //             const receipt = await tx.wait();
-        //             totalGasIndividual += receipt.gasUsed;
-        //         }
-
-        //         // Replenish tokens
-        //         await nbkToken.mint(await tokenDistributor.getAddress(), ethers.parseEther("50"));
-
-        //         const batchTx = await tokenDistributor.distributeTokensBatch(addresses, amounts);
-        //         const batchReceipt = await batchTx.wait();
-        //         const batchGas = batchReceipt.gasUsed;
-
-        //         expect(batchGas).to.be.lt(totalGasIndividual);
-
-        //         TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
-        //     } catch (error) {
-        //         TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
-        //         throw error;
-        //     }
-        // });
 
         it("Should handle high-frequency operations efficiently", async function () {
             try {
@@ -712,48 +626,6 @@ describe("TokenDistributor", function () {
             }
         });
 
-        // it("Should prevent malicious batch operations", async function () {
-        //     try {
-        //         // Attempt distributing to invalid addresses
-        //         const invalidAddresses = [
-        //             ZERO_ADDRESS,
-        //             ethers.ZeroAddress,
-        //             "0x000000000000000000000000000000000000dEaD"
-        //         ];
-        //         const amounts = Array(invalidAddresses.length).fill(ethers.parseEther("1"));
-
-        //         await expect(tokenDistributor.distributeTokensBatch(invalidAddresses, amounts))
-        //             .to.be.reverted;
-
-        //         TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
-        //     } catch (error) {
-        //         TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
-        //         throw error;
-        //     }
-        // });
-        // it("Should revert batch operations correectly with amount over totalBalance or unauthorized caller", async function () {
-        //     try {
-        //         // Attempt distributing to invalid addresses
-        //         const addresses = [
-        //             addr1.address,
-        //             addr2.address,
-        //             addr3.address,
-        //         ];
-        //         const amounts = Array(addresses.length).fill(ethers.parseEther("1000"));
-
-        //         await expect(tokenDistributor.connect(addr1).distributeTokensBatch(addresses, amounts))
-        //             .to.be.revertedWithCustomError(tokenDistributor,"UnauthorizedCaller");
-
-
-        //         await expect(tokenDistributor.distributeTokensBatch(addresses, amounts))
-        //             .to.be.revertedWithCustomError(tokenDistributor,"NotEnoughTokensOnDistributor");
-
-        //         TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
-        //     } catch (error) {
-        //         TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
-        //         throw error;
-        //     }
-        // });
     });
 
     describe("Complex State Transitions", function () {
@@ -971,7 +843,6 @@ describe("TokenDistributor", function () {
                     await ethers.provider.send("evm_mine");
 
                     const remain = await tokenDistributor.getRemainingDailyLimit();
-
                     if (jump >= 86400) {
                         expect(remain).to.equal(DAILY_LIMIT);
                     } else {
@@ -1037,97 +908,196 @@ describe("TokenDistributor", function () {
                 throw error;
             }
         });
-
-    //     it("Should maintain consistency during mixed operations", async function () {
-    //         try {
-    //             const amount = ethers.parseEther("30");
-                
-    //             const mixedOps = async () => {
-    //                 // normal distribution
-    //                 await tokenDistributor.distributeTokens(addr1.address, amount);
-                    
-    //                 // pause + dailyLimit update
-    //                 await tokenDistributor.pauseDistributor();
-    //                 await tokenDistributor.setDailyLimit(DAILY_LIMIT * BigInt(2));
-
-    //                 // unpause + batch distribution
-    //                 await tokenDistributor.unpauseDistributor();
-    //                 const batchAddresses = [addr2.address, addr3.address];
-    //                 const batchAmounts = [ethers.parseEther("20"), ethers.parseEther("20")];
-    //                 await tokenDistributor.distributeTokensBatch(batchAddresses, batchAmounts);
-    //             };
-
-    //             await mixedOps();
-
-    //             expect(await nbkToken.balanceOf(addr1.address)).to.equal(amount);
-    //             expect(await nbkToken.balanceOf(addr2.address)).to.equal(ethers.parseEther("20"));
-    //             expect(await nbkToken.balanceOf(addr3.address)).to.equal(ethers.parseEther("20"));
-    //             expect(await tokenDistributor.dailyLimit()).to.equal(DAILY_LIMIT * BigInt(2));
-    //             expect(await tokenDistributor.paused()).to.be.false;
-
-    //             TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
-    //         } catch (error) {
-    //             TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
-    //             throw error;
-    //         }
-    //     });
     });
 
-    describe("Function Interactions and Dependencies", function () {
-        interface OperationResult {
-            type: string;
-            recipient?: string;
-            amount?: bigint;
-            newLimit?: bigint;
-        }
-
-        it("Should verify contract state consistency", async function () {
-            try {
-                const amount = ethers.parseEther("50");
-                
-                // Sequence of ops
-                const operations = [
-                    async () => {
-                        await tokenDistributor.distributeTokens(addr1.address, amount);
-                        return { type: "distribution", recipient: addr1.address, amount } as OperationResult;
-                    },
-                    async () => {
-                        await tokenDistributor.pauseDistributor();
-                        return { type: "pause" } as OperationResult;
-                    },
-                    async () => {
-                        await tokenDistributor.setDailyLimit(DAILY_LIMIT * BigInt(2));
-                        return { type: "limitUpdate", newLimit: DAILY_LIMIT * BigInt(2) } as OperationResult;
-                    },
-                    async () => {
-                        await tokenDistributor.unpauseDistributor();
-                        return { type: "unpause" } as OperationResult;
-                    }
-                ];
-
-                for (const op of operations) {
-                    const result = await op();
-                    switch (result.type) {
-                        case "distribution":
-                            expect(await nbkToken.balanceOf(result.recipient!)).to.equal(result.amount);
-                            break;
-                        case "pause":
-                            expect(await tokenDistributor.paused()).to.be.true;
-                            break;
-                        case "unpause":
-                            expect(await tokenDistributor.paused()).to.be.false;
-                            break;
-                        case "limitUpdate":
-                            expect(await tokenDistributor.dailyLimit()).to.equal(result.newLimit);
-                            break;
-                    }
-                }
-
-                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult(CONTRACT_NAME, this.test?.parent?.title || "", this.test?.title || "", "failed", 0, error);
-                throw error;
-            }
+    describe("Additional Test Cases for Full Coverage", function () {
+        it("Should revert if attempting to distribute tokens with zero amount", async function () {
+            await expect(tokenDistributor.distributeTokens(addr1.address, 0))
+                .to.be.revertedWithCustomError(tokenDistributor, "InvalidWithdrawAmount");
+        });
+    
+        it("Should revert if attempting to withdraw funds with zero amount", async function () {
+            await expect(tokenDistributor.withdrawFunds(0))
+                .to.be.revertedWithCustomError(tokenDistributor, "InvalidWithdrawAmount");
+        });
+    
+        it("Should revert if a non-owner attempts to pause the distributor", async function () {
+            await expect(tokenDistributor.connect(addr1).pauseDistributor())
+                .to.be.revertedWithCustomError(tokenDistributor, "OwnableUnauthorizedAccount");
+        });
+    
+        it("Should revert if a non-owner attempts to unpause the distributor", async function () {
+            await tokenDistributor.pauseDistributor();
+            await expect(tokenDistributor.connect(addr1).unpauseDistributor())
+                .to.be.revertedWithCustomError(tokenDistributor, "OwnableUnauthorizedAccount");
+        });
+    
+        it("Should revert if a non-owner attempts to recover tokens", async function () {
+            await expect(tokenDistributor.connect(addr1).emergencyTokenRecovery(
+                await nbkToken.getAddress(), addr1.address, ethers.parseEther("10")
+            )).to.be.revertedWithCustomError(tokenDistributor, "OwnableUnauthorizedAccount");
+        });
+    
+        it("Should revert when setting a daily limit to the same current value", async function () {
+            await expect(tokenDistributor.setDailyLimit(DAILY_LIMIT))
+                .to.be.revertedWithCustomError(tokenDistributor, "DailyLimitValueNotUpdating");
+        });
+    
+        it("Should revert when attempting to allow an already allowed interactor", async function () {
+            await tokenDistributor.setAllowedInteractors(addr1.address);
+            await expect(tokenDistributor.setAllowedInteractors(addr1.address))
+                .to.be.revertedWithCustomError(tokenDistributor, "InteractorAlreadyAllowed");
+        });
+    
+        it("Should return correct remaining daily limit after multiple withdrawals", async function () {
+            await addr3.sendTransaction({
+                to: await tokenDistributor.getAddress(),
+                value: ethers.parseEther("10")
+            });
+    
+            const firstWithdraw = ethers.parseEther("2");
+            const secondWithdraw = ethers.parseEther("3");
+            await tokenDistributor.withdrawFunds(firstWithdraw);
+            await tokenDistributor.withdrawFunds(secondWithdraw);
+    
+            const remaining = await tokenDistributor.getRemainingDailyLimit();
+            expect(remaining).to.equal(DAILY_LIMIT - firstWithdraw - secondWithdraw);
+        });
+    
+        it("Should correctly check if an interactor is allowed", async function () {
+            await tokenDistributor.setAllowedInteractors(addr1.address);
+            expect(await tokenDistributor.checkAllowed(addr1.address)).to.be.true;
+            expect(await tokenDistributor.checkAllowed(addr2.address)).to.be.false;
+        });
+    
+        it("Should revert if trying to send tokens to zero address in emergency recovery", async function () {
+            await expect(
+                tokenDistributor.emergencyTokenRecovery(
+                    await nbkToken.getAddress(), ethers.ZeroAddress, ethers.parseEther("1")
+                )
+            ).to.be.revertedWithCustomError(tokenDistributor, "InvalidBeneficiary");
         });
     });
+    
+
+    describe("Edge Case Testing for 100% Coverage", function () {
+        it("Should revert when trying to set the same daily limit", async function () {
+            await expect(tokenDistributor.setDailyLimit(DAILY_LIMIT))
+                .to.be.revertedWithCustomError(tokenDistributor, "DailyLimitValueNotUpdating");
+        });
+
+        it("Should revert when trying to add the same interactor twice", async function () {
+            await tokenDistributor.setAllowedInteractors(addr1.address);
+            await expect(tokenDistributor.setAllowedInteractors(addr1.address))
+                .to.be.revertedWithCustomError(tokenDistributor, "InteractorAlreadyAllowed");
+        });
+
+        it("Should revert when trying to withdraw 0 tokens", async function () {
+            await expect(tokenDistributor.withdrawFunds(0))
+                .to.be.revertedWithCustomError(tokenDistributor, "InvalidWithdrawAmount");
+        });
+
+        it("Should revert when trying to distribute 0 tokens", async function () {
+            await expect(tokenDistributor.distributeTokens(addr1.address, 0))
+                .to.be.revertedWithCustomError(tokenDistributor, "InvalidWithdrawAmount");
+        });
+
+        it("Should return correct remaining daily limit", async function () {
+            const limit = await tokenDistributor.getRemainingDailyLimit();
+            expect(limit).to.equal(DAILY_LIMIT);
+        });
+
+        it("Should return correct contract balance", async function () {
+            const balance = await tokenDistributor.getContractBalance();
+            expect(balance).to.equal(INITIAL_SUPPLY);
+        });
+        });
+
+        describe("Additional Test Cases for Full Branch Coverage", function () {
+
+            it("should allow owner to distribute tokens without being an interactor", async function () {
+                expect(await tokenDistributor.checkAllowed(owner.address)).to.be.true;
+            });
+        
+            it("should revert when setting the same daily limit", async function () {
+                await expect(tokenDistributor.setDailyLimit(DAILY_LIMIT))
+                    .to.be.revertedWithCustomError(tokenDistributor, "DailyLimitValueNotUpdating");
+            });
+        
+            it("should revert when setting a daily limit to zero", async function () {
+                await expect(tokenDistributor.setDailyLimit(0))
+                    .to.be.revertedWithCustomError(tokenDistributor, "DailyLimitUpdateValueIncorrect");
+            });
+        
+            it("should revert if distributing tokens to zero address", async function () {
+                await expect(tokenDistributor.distributeTokens(ethers.ZeroAddress, ethers.parseEther("10")))
+                    .to.be.revertedWithCustomError(tokenDistributor, "InvalidBeneficiary");
+            });
+        
+            it("should revert if distributing zero tokens", async function () {
+                await expect(tokenDistributor.distributeTokens(addr1.address, 0))
+                    .to.be.revertedWithCustomError(tokenDistributor, "InvalidWithdrawAmount");
+            });
+        
+            it("should revert if withdrawing more than available Ether", async function () {
+                await expect(tokenDistributor.withdrawFunds(ethers.parseEther("100")))
+                    .to.be.revertedWithCustomError(tokenDistributor, "NotEnoughEtherToWithdraw");
+            });
+        
+            it("should revert if withdrawing zero Ether", async function () {
+                await expect(tokenDistributor.withdrawFunds(0))
+                    .to.be.revertedWithCustomError(tokenDistributor, "InvalidWithdrawAmount");
+            });
+        
+            it("should revert when adding the same interactor twice", async function () {
+                await tokenDistributor.setAllowedInteractors(addr1.address);
+                await expect(tokenDistributor.setAllowedInteractors(addr1.address))
+                    .to.be.revertedWithCustomError(tokenDistributor, "InteractorAlreadyAllowed");
+            });
+        
+            it("should return correct remaining daily limit after multiple withdrawals", async function () {
+                await addr3.sendTransaction({ to: await tokenDistributor.getAddress(), value: ethers.parseEther("10") });
+        
+                const firstWithdraw = ethers.parseEther("2");
+                const secondWithdraw = ethers.parseEther("3");
+                await tokenDistributor.withdrawFunds(firstWithdraw);
+                await tokenDistributor.withdrawFunds(secondWithdraw);
+        
+                const remaining = await tokenDistributor.getRemainingDailyLimit();
+                expect(remaining).to.equal(DAILY_LIMIT - firstWithdraw - secondWithdraw);
+            });
+        
+        });
+
+        describe("TokenDistributor - distributeTokens error handling", function () {
+
+            it("should revert if caller is not allowed", async function () {
+                await expect(tokenDistributor.connect(addr2).distributeTokens(addr1.address, ethers.parseEther("10")))
+                    .to.be.revertedWithCustomError(tokenDistributor, "UnauthorizedCaller")
+                    .withArgs(addr2.address);
+            });
+        
+            it("should revert if beneficiary is zero address", async function () {
+                await expect(tokenDistributor.distributeTokens(ethers.ZeroAddress, ethers.parseEther("10")))
+                    .to.be.revertedWithCustomError(tokenDistributor, "InvalidBeneficiary")
+                    .withArgs(ethers.ZeroAddress);
+            });
+        
+            it("should revert if amount is less than 1", async function () {
+                await expect(tokenDistributor.distributeTokens(addr1.address, 0))
+                    .to.be.revertedWithCustomError(tokenDistributor, "InvalidWithdrawAmount")
+                    .withArgs(0);
+            });
+        
+            it("should revert if contract does not have enough tokens", async function () {
+                const contractBalance = await nbkToken.balanceOf(await tokenDistributor.getAddress());
+                const excessiveAmount = contractBalance + ethers.parseEther("1");
+        
+                await expect(tokenDistributor.distributeTokens(addr1.address, excessiveAmount))
+                    .to.be.revertedWithCustomError(tokenDistributor, "NotEnoughTokensOnDistributor")
+                    .withArgs(contractBalance, excessiveAmount);
+            });
+        
+        });    
+    
 });

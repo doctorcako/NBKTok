@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.23;
 
 /**
  * @title VestingSchedule
  * @notice Library for managing vesting schedules, including the creation of vesting data and calculating releasable tokens.
- * 
+ * @custom:security-contact dariosansano@neuro-block.com
  * Provides functionality to:
  * - Create a vesting schedule with a total amount, cliff time, and duration.
  * - Calculate how many tokens are releasable based on elapsed time and vesting intervals.
@@ -24,9 +24,7 @@ library VestingSchedule {
         uint256 unlockPerMonth;   // Percentage of totalAmount to unlock per month in this interval
     }
 
-    /// ----------------- ERRORS -----------------
-    error InvalidCliffTime(uint256 cliff, uint256 duration); // Error for invalid cliff time
-    error InvalidVestingPeriod(uint256 duration); // Error for invalid vesting period
+    error InvalidCliffTime(uint256 cliff, uint256 amount );
 
     /**
      * @dev Creates a vesting schedule for an address. Ensures that the cliff time is less than the total vesting duration.
@@ -40,6 +38,9 @@ library VestingSchedule {
      * @notice Reverts if the cliff time is greater than or equal to the total vesting duration.
      */
     function createVesting(uint256 totalAmount, uint256 cliff, uint256 duration) internal view returns (VestingData memory) {
+        if(cliff >= duration){
+            revert InvalidCliffTime(cliff, duration);
+        }
         VestingData memory vestingData = VestingData({
             totalAmount: totalAmount,
             claimedAmount: 0,
@@ -88,7 +89,7 @@ library VestingSchedule {
             }
         }
         // Calcular tokens desbloqueados basados en el porcentaje total desbloqueado
-        uint256 totalUnlockedTokens = (vesting.totalAmount * totalUnlockedPercentage) / 100;
+        uint256 totalUnlockedTokens = (vesting.totalAmount * totalUnlockedPercentage) / 100_000;
         return totalUnlockedTokens > vesting.claimedAmount ? totalUnlockedTokens - vesting.claimedAmount : 0;
     }
 }

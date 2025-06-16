@@ -1,0 +1,370 @@
+<?xml version="1.0" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="794pt" height="863pt" viewBox="0.00 0.00 793.92 863.00">
+<g id="graph0" class="graph" transform="translate(15.684684806513928,840.391482146518) scale(0.9780634734473392)" data-name="G">
+
+<polygon fill="#2e3e56" stroke="none" points="-4,4 -4,-859 789.92,-859 789.92,4 -4,4" style=""/>
+<g id="clust1" class="cluster" data-name="clusterIcoNBKToken">
+
+<path fill="#445773" stroke="#445773" d="M20,-147C20,-147 765.92,-147 765.92,-147 771.92,-147 777.92,-153 777.92,-159 777.92,-159 777.92,-698 777.92,-698 777.92,-704 771.92,-710 765.92,-710 765.92,-710 20,-710 20,-710 14,-710 8,-704 8,-698 8,-698 8,-159 8,-159 8,-153 14,-147 20,-147" style=""/>
+<text text-anchor="middle" x="392.96" y="-693.4" font-family="Times,serif" font-size="14.00" fill="#f0f0f0" style="">IcoNBKToken</text>
+</g>
+<g id="clust2" class="cluster" data-name="clusterTokenDistributor">
+
+<path fill="#3b4b63" stroke="#e8726d" stroke-dasharray="5,2" d="M266.85,-62C266.85,-62 410.74,-62 410.74,-62 416.74,-62 422.74,-68 422.74,-74 422.74,-74 422.74,-127 422.74,-127 422.74,-133 416.74,-139 410.74,-139 410.74,-139 266.85,-139 266.85,-139 260.85,-139 254.85,-133 254.85,-127 254.85,-127 254.85,-74 254.85,-74 254.85,-68 260.85,-62 266.85,-62" style=""/>
+<text text-anchor="middle" x="338.79" y="-122.4" font-family="Times,serif" font-size="14.00" fill="#f0f0f0" style="">TokenDistributor</text>
+</g>
+<g id="clust3" class="cluster" data-name="clusterVestingSchedule">
+
+<path fill="#3b4b63" stroke="#e8726d" stroke-dasharray="5,2" d="M539.49,-8C539.49,-8 705.83,-8 705.83,-8 711.83,-8 717.83,-14 717.83,-20 717.83,-20 717.83,-127 717.83,-127 717.83,-133 711.83,-139 705.83,-139 705.83,-139 539.49,-139 539.49,-139 533.49,-139 527.49,-133 527.49,-127 527.49,-127 527.49,-20 527.49,-20 527.49,-14 533.49,-8 539.49,-8" style=""/>
+<text text-anchor="middle" x="622.66" y="-122.4" font-family="Times,serif" font-size="14.00" fill="#f0f0f0" style="">VestingSchedule</text>
+</g>
+<g id="clust4" class="cluster" data-name="cluster_01">
+
+<polygon fill="#2e3e56" stroke="black" points="36.1,-718 36.1,-847 373.79,-847 373.79,-718 36.1,-718" style=""/>
+<text text-anchor="middle" x="204.94" y="-830.4" font-family="Times,serif" font-size="14.00" style="">Legend</text>
+</g>
+<!-- IcoNBKToken.&lt;Constructor&gt; -->
+<g id="node1" class="node" pointer-events="visible" data-name="IcoNBKToken.&lt;Constructor&gt;">
+
+<ellipse fill="#ff9797" stroke="#ff9797" stroke-width="3" cx="109.1" cy="-659" rx="67.55" ry="18" style=""/>
+<text text-anchor="middle" x="109.1" y="-654.8" font-family="Times,serif" font-size="14.00" style="">&lt;Constructor&gt;</text>
+</g>
+<!-- IcoNBKToken.TokenDistributor -->
+<g id="node14" class="node" pointer-events="visible" data-name="IcoNBKToken.TokenDistributor">
+
+<ellipse fill="#edad56" stroke="#edad56" stroke-width="3" cx="338.79" cy="-659" rx="78.18" ry="18" style=""/>
+<text text-anchor="middle" x="338.79" y="-654.8" font-family="Times,serif" font-size="14.00" style="">TokenDistributor</text>
+</g>
+<!-- IcoNBKToken.&lt;Constructor&gt;&#45;&gt;IcoNBKToken.TokenDistributor -->
+<g id="edge1" class="edge" data-name="IcoNBKToken.&lt;Constructor&gt;-&gt;IcoNBKToken.TokenDistributor">
+
+<path fill="none" stroke="#1bc6a6" stroke-width="2" d="M178.1,-659C199.57,-659 223.64,-659 246.45,-659" style=""/>
+<polygon fill="#1bc6a6" stroke="#1bc6a6" stroke-width="2" points="246.31,-662.5 256.31,-659 246.31,-655.5 246.31,-662.5" style=""/>
+</g>
+<!-- IcoNBKToken.payable -->
+<g id="node15" class="node" pointer-events="visible" data-name="IcoNBKToken.payable">
+
+<ellipse fill="#edad56" stroke="#edad56" stroke-width="3" cx="338.79" cy="-605" rx="41.13" ry="18" style=""/>
+<text text-anchor="middle" x="338.79" y="-600.8" font-family="Times,serif" font-size="14.00" style="">payable</text>
+</g>
+<!-- IcoNBKToken.&lt;Constructor&gt;&#45;&gt;IcoNBKToken.payable -->
+<g id="edge2" class="edge" data-name="IcoNBKToken.&lt;Constructor&gt;-&gt;IcoNBKToken.payable">
+
+<path fill="none" stroke="#1bc6a6" stroke-width="2" d="M162.34,-646.61C200.27,-637.61 251.27,-625.52 288.5,-616.69" style=""/>
+<polygon fill="#1bc6a6" stroke="#1bc6a6" stroke-width="2" points="289.19,-620.12 298.11,-614.41 287.57,-613.31 289.19,-620.12" style=""/>
+</g>
+<!-- IcoNBKToken.setICOParams -->
+<g id="node2" class="node" pointer-events="visible" data-name="IcoNBKToken.setICOParams">
+
+<ellipse fill="#ffbdb9" stroke="#ffbdb9" stroke-width="3" cx="109.1" cy="-605" rx="66.65" ry="18" style=""/>
+<text text-anchor="middle" x="109.1" y="-600.8" font-family="Times,serif" font-size="14.00" style="">setICOParams</text>
+</g>
+<!-- IcoNBKToken.buyTokens -->
+<g id="node3" class="node" pointer-events="visible" data-name="IcoNBKToken.buyTokens">
+
+<ellipse fill="#ffbdb9" stroke="brown" stroke-width="3" cx="109.1" cy="-551" rx="53.9" ry="18" style=""/>
+<text text-anchor="middle" x="109.1" y="-546.8" font-family="Times,serif" font-size="14.00" style="">buyTokens</text>
+</g>
+<!-- IcoNBKToken.purchaseValid -->
+<g id="node4" class="node" pointer-events="visible" data-name="IcoNBKToken.purchaseValid">
+
+<ellipse fill="#edad56" stroke="#edad56" stroke-width="3" cx="338.79" cy="-389" rx="66.62" ry="18" style=""/>
+<text text-anchor="middle" x="338.79" y="-384.8" font-family="Times,serif" font-size="14.00" style="">purchaseValid</text>
+</g>
+<!-- IcoNBKToken.buyTokens&#45;&gt;IcoNBKToken.purchaseValid -->
+<g id="edge3" class="edge" data-name="IcoNBKToken.buyTokens-&gt;IcoNBKToken.purchaseValid">
+
+<path fill="none" stroke="#1bc6a6" stroke-width="2" d="M161.47,-545.05C176.16,-541.12 191.16,-534.64 202.19,-524 238.62,-488.88 201.41,-450.74 238.19,-416 245.3,-409.29 253.91,-404.21 263.05,-400.37" style=""/>
+<polygon fill="#1bc6a6" stroke="#1bc6a6" stroke-width="2" points="264.19,-403.68 272.44,-397.03 261.84,-397.08 264.19,-403.68" style=""/>
+</g>
+<!-- IcoNBKToken.assignVesting -->
+<g id="node5" class="node" pointer-events="visible" data-name="IcoNBKToken.assignVesting">
+
+<ellipse fill="#edad56" stroke="#edad56" stroke-width="3" cx="338.79" cy="-335" rx="65.44" ry="18" style=""/>
+<text text-anchor="middle" x="338.79" y="-330.8" font-family="Times,serif" font-size="14.00" style="">assignVesting</text>
+</g>
+<!-- IcoNBKToken.buyTokens&#45;&gt;IcoNBKToken.assignVesting -->
+<g id="edge6" class="edge" data-name="IcoNBKToken.buyTokens-&gt;IcoNBKToken.assignVesting">
+
+<path fill="none" stroke="#80e097" stroke-width="2" d="M162.17,-545.74C176.88,-541.83 191.72,-535.19 202.19,-524 252.58,-470.14 187.26,-415.34 238.19,-362 245.15,-354.71 253.86,-349.32 263.22,-345.35" style=""/>
+<polygon fill="#80e097" stroke="#80e097" stroke-width="2" points="264.23,-348.71 272.48,-342.06 261.88,-342.11 264.23,-348.71" style=""/>
+</g>
+<!-- IcoNBKToken.buyTokens&#45;&gt;IcoNBKToken.payable -->
+<g id="edge8" class="edge" data-name="IcoNBKToken.buyTokens-&gt;IcoNBKToken.payable">
+
+<path fill="none" stroke="#1bc6a6" stroke-width="2" d="M155.08,-561.67C193.47,-570.77 248.6,-583.85 288.25,-593.25" style=""/>
+<polygon fill="#1bc6a6" stroke="#1bc6a6" stroke-width="2" points="287.31,-596.63 297.85,-595.53 288.93,-589.81 287.31,-596.63" style=""/>
+</g>
+<!-- IcoNBKToken.PurchaseNotValid -->
+<g id="node16" class="node" pointer-events="visible" data-name="IcoNBKToken.PurchaseNotValid">
+
+<ellipse fill="#edad56" stroke="#edad56" stroke-width="3" cx="338.79" cy="-443" rx="81.67" ry="18" style=""/>
+<text text-anchor="middle" x="338.79" y="-438.8" font-family="Times,serif" font-size="14.00" style="">PurchaseNotValid</text>
+</g>
+<!-- IcoNBKToken.buyTokens&#45;&gt;IcoNBKToken.PurchaseNotValid -->
+<g id="edge4" class="edge" data-name="IcoNBKToken.buyTokens-&gt;IcoNBKToken.PurchaseNotValid">
+
+<path fill="none" stroke="#1bc6a6" stroke-width="2" d="M159.38,-543.26C174.14,-539.25 189.71,-533.18 202.19,-524 225.43,-506.91 214.78,-486.85 238.19,-470 244.42,-465.52 251.34,-461.79 258.56,-458.67" style=""/>
+<polygon fill="#1bc6a6" stroke="#1bc6a6" stroke-width="2" points="259.57,-462.03 267.67,-455.2 257.08,-455.49 259.57,-462.03" style=""/>
+</g>
+<!-- IcoNBKToken.TotalAmountExceeded -->
+<g id="node17" class="node" pointer-events="visible" data-name="IcoNBKToken.TotalAmountExceeded">
+
+<ellipse fill="#edad56" stroke="#edad56" stroke-width="3" cx="338.79" cy="-497" rx="100.7" ry="18" style=""/>
+<text text-anchor="middle" x="338.79" y="-492.8" font-family="Times,serif" font-size="14.00" style="">TotalAmountExceeded</text>
+</g>
+<!-- IcoNBKToken.buyTokens&#45;&gt;IcoNBKToken.TotalAmountExceeded -->
+<g id="edge5" class="edge" data-name="IcoNBKToken.buyTokens-&gt;IcoNBKToken.TotalAmountExceeded">
+
+<path fill="none" stroke="#1bc6a6" stroke-width="2" d="M155.08,-540.33C185.57,-533.1 226.62,-523.37 262.08,-514.95" style=""/>
+<polygon fill="#1bc6a6" stroke="#1bc6a6" stroke-width="2" points="262.5,-518.45 271.42,-512.74 260.89,-511.64 262.5,-518.45" style=""/>
+</g>
+<!-- IcoNBKToken.BalanceTransferFailed -->
+<g id="node18" class="node" pointer-events="visible" data-name="IcoNBKToken.BalanceTransferFailed">
+
+<ellipse fill="#edad56" stroke="#edad56" stroke-width="3" cx="338.79" cy="-551" rx="98.95" ry="18" style=""/>
+<text text-anchor="middle" x="338.79" y="-546.8" font-family="Times,serif" font-size="14.00" style="">BalanceTransferFailed</text>
+</g>
+<!-- IcoNBKToken.buyTokens&#45;&gt;IcoNBKToken.BalanceTransferFailed -->
+<g id="edge9" class="edge" data-name="IcoNBKToken.buyTokens-&gt;IcoNBKToken.BalanceTransferFailed">
+
+<path fill="none" stroke="#1bc6a6" stroke-width="2" d="M164.35,-551C182.84,-551 204.26,-551 225.6,-551" style=""/>
+<polygon fill="#1bc6a6" stroke="#1bc6a6" stroke-width="2" points="225.47,-554.5 235.47,-551 225.47,-547.5 225.47,-554.5" style=""/>
+</g>
+<!-- TokenDistributor.distributeTokens -->
+<g id="node28" class="node" pointer-events="visible" data-name="TokenDistributor.distributeTokens">
+
+<ellipse fill="#edad56" stroke="#edad56" stroke-width="3" cx="338.79" cy="-88" rx="75.89" ry="18" style=""/>
+<text text-anchor="middle" x="338.79" y="-83.8" font-family="Times,serif" font-size="14.00" style="">distributeTokens</text>
+</g>
+<!-- IcoNBKToken.buyTokens&#45;&gt;TokenDistributor.distributeTokens -->
+<g id="edge7" class="edge" data-name="IcoNBKToken.buyTokens-&gt;TokenDistributor.distributeTokens">
+
+<path fill="none" stroke="white" stroke-width="2" d="M162.57,-546.64C177.48,-542.78 192.33,-535.95 202.19,-524 256.32,-458.41 191.57,-214.13 238.19,-143 247.95,-128.11 263.19,-116.89 278.83,-108.6" style=""/>
+<polygon fill="white" stroke="white" stroke-width="2" points="280.03,-111.91 287.49,-104.39 276.97,-105.61 280.03,-111.91" style=""/>
+</g>
+<!-- IcoNBKToken.getAvailableTokens -->
+<g id="node10" class="node" pointer-events="visible" data-name="IcoNBKToken.getAvailableTokens">
+
+<ellipse fill="#edad56" stroke="#edad56" stroke-width="3" cx="622.66" cy="-389" rx="88.6" ry="18" style=""/>
+<text text-anchor="middle" x="622.66" y="-384.8" font-family="Times,serif" font-size="14.00" style="">getAvailableTokens</text>
+</g>
+<!-- IcoNBKToken.purchaseValid&#45;&gt;IcoNBKToken.getAvailableTokens -->
+<g id="edge11" class="edge" data-name="IcoNBKToken.purchaseValid-&gt;IcoNBKToken.getAvailableTokens">
+
+<path fill="none" stroke="#1bc6a6" stroke-width="2" d="M406.59,-389C440.45,-389 482.29,-389 520.04,-389" style=""/>
+<polygon fill="#1bc6a6" stroke="#1bc6a6" stroke-width="2" points="519.64,-392.5 529.64,-389 519.64,-385.5 519.64,-392.5" style=""/>
+</g>
+<!-- IcoNBKToken.AddressNotInWhitelist -->
+<g id="node19" class="node" pointer-events="visible" data-name="IcoNBKToken.AddressNotInWhitelist">
+
+<ellipse fill="#edad56" stroke="#edad56" stroke-width="3" cx="622.66" cy="-443" rx="100.74" ry="18" style=""/>
+<text text-anchor="middle" x="622.66" y="-438.8" font-family="Times,serif" font-size="14.00" style="">AddressNotInWhitelist</text>
+</g>
+<!-- IcoNBKToken.purchaseValid&#45;&gt;IcoNBKToken.AddressNotInWhitelist -->
+<g id="edge10" class="edge" data-name="IcoNBKToken.purchaseValid-&gt;IcoNBKToken.AddressNotInWhitelist">
+
+<path fill="none" stroke="#1bc6a6" stroke-width="2" d="M394.52,-400.08C419.21,-405.03 448.75,-410.89 475.39,-416 494.84,-419.73 515.77,-423.65 535.54,-427.31" style=""/>
+<polygon fill="#1bc6a6" stroke="#1bc6a6" stroke-width="2" points="534.89,-430.75 545.36,-429.12 536.16,-423.87 534.89,-430.75" style=""/>
+</g>
+<!-- IcoNBKToken.NoTokensAvailable -->
+<g id="node20" class="node" pointer-events="visible" data-name="IcoNBKToken.NoTokensAvailable">
+
+<ellipse fill="#edad56" stroke="#edad56" stroke-width="3" cx="622.66" cy="-497" rx="88.61" ry="18" style=""/>
+<text text-anchor="middle" x="622.66" y="-492.8" font-family="Times,serif" font-size="14.00" style="">NoTokensAvailable</text>
+</g>
+<!-- IcoNBKToken.purchaseValid&#45;&gt;IcoNBKToken.NoTokensAvailable -->
+<g id="edge12" class="edge" data-name="IcoNBKToken.purchaseValid-&gt;IcoNBKToken.NoTokensAvailable">
+
+<path fill="none" stroke="#1bc6a6" stroke-width="2" d="M399.54,-397.79C413.49,-401.78 427.69,-407.58 439.39,-416 462.8,-432.85 451.31,-454.13 475.39,-470 489.4,-479.23 505.71,-485.51 522.26,-489.75" style=""/>
+<polygon fill="#1bc6a6" stroke="#1bc6a6" stroke-width="2" points="521.44,-493.16 531.97,-491.94 522.98,-486.33 521.44,-493.16" style=""/>
+</g>
+<!-- IcoNBKToken.NoMsgValueSent -->
+<g id="node21" class="node" pointer-events="visible" data-name="IcoNBKToken.NoMsgValueSent">
+
+<ellipse fill="#edad56" stroke="#edad56" stroke-width="3" cx="622.66" cy="-551" rx="80.48" ry="18" style=""/>
+<text text-anchor="middle" x="622.66" y="-546.8" font-family="Times,serif" font-size="14.00" style="">NoMsgValueSent</text>
+</g>
+<!-- IcoNBKToken.purchaseValid&#45;&gt;IcoNBKToken.NoMsgValueSent -->
+<g id="edge13" class="edge" data-name="IcoNBKToken.purchaseValid-&gt;IcoNBKToken.NoMsgValueSent">
+
+<path fill="none" stroke="#1bc6a6" stroke-width="2" d="M402.29,-396.01C415.85,-400.07 429.17,-406.34 439.39,-416 476.17,-450.74 437.21,-490.8 475.39,-524 490.18,-536.86 509.05,-544.47 528.28,-548.81" style=""/>
+<polygon fill="#1bc6a6" stroke="#1bc6a6" stroke-width="2" points="527.48,-552.22 537.96,-550.64 528.79,-545.34 527.48,-552.22" style=""/>
+</g>
+<!-- IcoNBKToken.ICONotInActivePeriod -->
+<g id="node22" class="node" pointer-events="visible" data-name="IcoNBKToken.ICONotInActivePeriod">
+
+<ellipse fill="#edad56" stroke="#edad56" stroke-width="3" cx="622.66" cy="-227" rx="101.3" ry="18" style=""/>
+<text text-anchor="middle" x="622.66" y="-222.8" font-family="Times,serif" font-size="14.00" style="">ICONotInActivePeriod</text>
+</g>
+<!-- IcoNBKToken.purchaseValid&#45;&gt;IcoNBKToken.ICONotInActivePeriod -->
+<g id="edge14" class="edge" data-name="IcoNBKToken.purchaseValid-&gt;IcoNBKToken.ICONotInActivePeriod">
+
+<path fill="none" stroke="#1bc6a6" stroke-width="2" d="M402.29,-381.99C415.85,-377.93 429.17,-371.66 439.39,-362 476.17,-327.26 437.21,-287.2 475.39,-254 485.36,-245.33 497.18,-239.05 509.72,-234.55" style=""/>
+<polygon fill="#1bc6a6" stroke="#1bc6a6" stroke-width="2" points="510.53,-237.96 519.04,-231.65 508.45,-231.28 510.53,-237.96" style=""/>
+</g>
+<!-- IcoNBKToken.InsufficientETHForTokenPurchase -->
+<g id="node23" class="node" pointer-events="visible" data-name="IcoNBKToken.InsufficientETHForTokenPurchase">
+
+<ellipse fill="#edad56" stroke="#edad56" stroke-width="3" cx="622.66" cy="-281" rx="147.03" ry="18" style=""/>
+<text text-anchor="middle" x="622.66" y="-276.8" font-family="Times,serif" font-size="14.00" style="">InsufficientETHForTokenPurchase</text>
+</g>
+<!-- IcoNBKToken.purchaseValid&#45;&gt;IcoNBKToken.InsufficientETHForTokenPurchase -->
+<g id="edge15" class="edge" data-name="IcoNBKToken.purchaseValid-&gt;IcoNBKToken.InsufficientETHForTokenPurchase">
+
+<path fill="none" stroke="#1bc6a6" stroke-width="2" d="M399.54,-380.21C413.49,-376.22 427.69,-370.42 439.39,-362 462.8,-345.15 451.31,-323.87 475.39,-308 481.47,-303.99 487.98,-300.54 494.76,-297.57" style=""/>
+<polygon fill="#1bc6a6" stroke="#1bc6a6" stroke-width="2" points="495.54,-301.03 503.57,-294.12 492.98,-294.51 495.54,-301.03" style=""/>
+</g>
+<!-- IcoNBKToken.TimeLockNotPassed -->
+<g id="node24" class="node" pointer-events="visible" data-name="IcoNBKToken.TimeLockNotPassed">
+
+<ellipse fill="#edad56" stroke="#edad56" stroke-width="3" cx="622.66" cy="-335" rx="92.06" ry="18" style=""/>
+<text text-anchor="middle" x="622.66" y="-330.8" font-family="Times,serif" font-size="14.00" style="">TimeLockNotPassed</text>
+</g>
+<!-- IcoNBKToken.purchaseValid&#45;&gt;IcoNBKToken.TimeLockNotPassed -->
+<g id="edge16" class="edge" data-name="IcoNBKToken.purchaseValid-&gt;IcoNBKToken.TimeLockNotPassed">
+
+<path fill="none" stroke="#1bc6a6" stroke-width="2" d="M394.52,-377.92C419.21,-372.97 448.75,-367.11 475.39,-362 496.08,-358.03 518.43,-353.85 539.29,-350" style=""/>
+<polygon fill="#1bc6a6" stroke="#1bc6a6" stroke-width="2" points="539.88,-353.45 549.08,-348.19 538.61,-346.56 539.88,-353.45" style=""/>
+</g>
+<!-- VestingSchedule.createVesting -->
+<g id="node29" class="node" pointer-events="visible" data-name="VestingSchedule.createVesting">
+
+<ellipse fill="#edad56" stroke="#edad56" stroke-width="3" cx="622.66" cy="-88" rx="64.24" ry="18" style=""/>
+<text text-anchor="middle" x="622.66" y="-83.8" font-family="Times,serif" font-size="14.00" style="">createVesting</text>
+</g>
+<!-- IcoNBKToken.assignVesting&#45;&gt;VestingSchedule.createVesting -->
+<g id="edge17" class="edge" data-name="IcoNBKToken.assignVesting-&gt;VestingSchedule.createVesting">
+
+<path fill="none" stroke="white" stroke-width="2" d="M402.28,-328.99C416.08,-324.92 429.51,-318.38 439.39,-308 491.13,-253.62 426.3,-199.78 475.39,-143 494.63,-120.76 523.8,-107.49 551.04,-99.58" style=""/>
+<polygon fill="white" stroke="white" stroke-width="2" points="551.68,-103.03 560.45,-97.09 549.89,-96.27 551.68,-103.03" style=""/>
+</g>
+<!-- IcoNBKToken.claimTokens -->
+<g id="node6" class="node" pointer-events="visible" data-name="IcoNBKToken.claimTokens">
+
+<ellipse fill="#ffbdb9" stroke="#ffbdb9" stroke-width="3" cx="109.1" cy="-173" rx="60.83" ry="18" style=""/>
+<text text-anchor="middle" x="109.1" y="-168.8" font-family="Times,serif" font-size="14.00" style="">claimTokens</text>
+</g>
+<!-- IcoNBKToken.NoReleasableTokens -->
+<g id="node25" class="node" pointer-events="visible" data-name="IcoNBKToken.NoReleasableTokens">
+
+<ellipse fill="#edad56" stroke="#edad56" stroke-width="3" cx="338.79" cy="-173" rx="93.18" ry="18" style=""/>
+<text text-anchor="middle" x="338.79" y="-168.8" font-family="Times,serif" font-size="14.00" style="">NoReleasableTokens</text>
+</g>
+<!-- IcoNBKToken.claimTokens&#45;&gt;IcoNBKToken.NoReleasableTokens -->
+<g id="edge20" class="edge" data-name="IcoNBKToken.claimTokens-&gt;IcoNBKToken.NoReleasableTokens">
+
+<path fill="none" stroke="#1bc6a6" stroke-width="2" d="M171.41,-173C189.96,-173 210.88,-173 231.48,-173" style=""/>
+<polygon fill="#1bc6a6" stroke="#1bc6a6" stroke-width="2" points="231.21,-176.5 241.21,-173 231.21,-169.5 231.21,-176.5" style=""/>
+</g>
+<!-- IcoNBKToken.claimTokens&#45;&gt;TokenDistributor.distributeTokens -->
+<g id="edge19" class="edge" data-name="IcoNBKToken.claimTokens-&gt;TokenDistributor.distributeTokens">
+
+<path fill="none" stroke="white" stroke-width="2" d="M149.5,-158.29C186.38,-144.53 241.81,-123.83 282.99,-108.46" style=""/>
+<polygon fill="white" stroke="white" stroke-width="2" points="284.03,-111.81 292.17,-105.03 281.58,-105.25 284.03,-111.81" style=""/>
+</g>
+<!-- VestingSchedule.calculateReleasable -->
+<g id="node30" class="node" pointer-events="visible" data-name="VestingSchedule.calculateReleasable">
+
+<ellipse fill="#edad56" stroke="#edad56" stroke-width="3" cx="622.66" cy="-34" rx="87.34" ry="18" style=""/>
+<text text-anchor="middle" x="622.66" y="-29.8" font-family="Times,serif" font-size="14.00" style="">calculateReleasable</text>
+</g>
+<!-- IcoNBKToken.claimTokens&#45;&gt;VestingSchedule.calculateReleasable -->
+<g id="edge18" class="edge" data-name="IcoNBKToken.claimTokens-&gt;VestingSchedule.calculateReleasable">
+
+<path fill="none" stroke="white" stroke-width="2" d="M124.15,-154.11C145.41,-127.21 188.58,-78.8 238.19,-58 332.93,-18.27 452.47,-17.66 532.68,-23.48" style=""/>
+<polygon fill="white" stroke="white" stroke-width="2" points="531.94,-26.93 542.18,-24.22 532.49,-19.95 531.94,-26.93" style=""/>
+</g>
+<!-- IcoNBKToken.setWhitelist -->
+<g id="node7" class="node" pointer-events="visible" data-name="IcoNBKToken.setWhitelist">
+
+<ellipse fill="#ffbdb9" stroke="#ffbdb9" stroke-width="3" cx="109.1" cy="-443" rx="57.33" ry="18" style=""/>
+<text text-anchor="middle" x="109.1" y="-438.8" font-family="Times,serif" font-size="14.00" style="">setWhitelist</text>
+</g>
+<!-- IcoNBKToken.setRate -->
+<g id="node8" class="node" pointer-events="visible" data-name="IcoNBKToken.setRate">
+
+<ellipse fill="#ffbdb9" stroke="#ffbdb9" stroke-width="3" cx="109.1" cy="-389" rx="39.42" ry="18" style=""/>
+<text text-anchor="middle" x="109.1" y="-384.8" font-family="Times,serif" font-size="14.00" style="">setRate</text>
+</g>
+<!-- IcoNBKToken.setTimelockDuration -->
+<g id="node9" class="node" pointer-events="visible" data-name="IcoNBKToken.setTimelockDuration">
+
+<ellipse fill="#ffbdb9" stroke="#ffbdb9" stroke-width="3" cx="109.1" cy="-335" rx="93.19" ry="18" style=""/>
+<text text-anchor="middle" x="109.1" y="-330.8" font-family="Times,serif" font-size="14.00" style="">setTimelockDuration</text>
+</g>
+<!-- IcoNBKToken.getICOInfo -->
+<g id="node11" class="node" pointer-events="visible" data-name="IcoNBKToken.getICOInfo">
+
+<ellipse fill="#ff9797" stroke="#ff9797" stroke-width="3" cx="109.1" cy="-281" rx="55.61" ry="18" style=""/>
+<text text-anchor="middle" x="109.1" y="-276.8" font-family="Times,serif" font-size="14.00" style="">getICOInfo</text>
+</g>
+<!-- IcoNBKToken.pauseICO -->
+<g id="node12" class="node" pointer-events="visible" data-name="IcoNBKToken.pauseICO">
+
+<ellipse fill="#ffbdb9" stroke="#ffbdb9" stroke-width="3" cx="109.1" cy="-497" rx="49.81" ry="18" style=""/>
+<text text-anchor="middle" x="109.1" y="-492.8" font-family="Times,serif" font-size="14.00" style="">pauseICO</text>
+</g>
+<!-- IcoNBKToken._pause -->
+<g id="node26" class="node" pointer-events="visible" data-name="IcoNBKToken._pause">
+
+<ellipse fill="#edad56" stroke="#edad56" stroke-width="3" cx="338.79" cy="-281" rx="37.71" ry="18" style=""/>
+<text text-anchor="middle" x="338.79" y="-276.8" font-family="Times,serif" font-size="14.00" style="">_pause</text>
+</g>
+<!-- IcoNBKToken.pauseICO&#45;&gt;IcoNBKToken._pause -->
+<g id="edge21" class="edge" data-name="IcoNBKToken.pauseICO-&gt;IcoNBKToken._pause">
+
+<path fill="none" stroke="#1bc6a6" stroke-width="2" d="M158.81,-492.58C174.6,-488.81 190.92,-482.05 202.19,-470 252.58,-416.14 187.26,-361.34 238.19,-308 250.94,-294.65 269.55,-287.68 287.25,-284.1" style=""/>
+<polygon fill="#1bc6a6" stroke="#1bc6a6" stroke-width="2" points="287.57,-287.6 296.88,-282.55 286.45,-280.69 287.57,-287.6" style=""/>
+</g>
+<!-- IcoNBKToken.unpauseICO -->
+<g id="node13" class="node" pointer-events="visible" data-name="IcoNBKToken.unpauseICO">
+
+<ellipse fill="#ffbdb9" stroke="#ffbdb9" stroke-width="3" cx="109.1" cy="-227" rx="59.12" ry="18" style=""/>
+<text text-anchor="middle" x="109.1" y="-222.8" font-family="Times,serif" font-size="14.00" style="">unpauseICO</text>
+</g>
+<!-- IcoNBKToken._unpause -->
+<g id="node27" class="node" pointer-events="visible" data-name="IcoNBKToken._unpause">
+
+<ellipse fill="#edad56" stroke="#edad56" stroke-width="3" cx="338.79" cy="-227" rx="47.52" ry="18" style=""/>
+<text text-anchor="middle" x="338.79" y="-222.8" font-family="Times,serif" font-size="14.00" style="">_unpause</text>
+</g>
+<!-- IcoNBKToken.unpauseICO&#45;&gt;IcoNBKToken._unpause -->
+<g id="edge22" class="edge" data-name="IcoNBKToken.unpauseICO-&gt;IcoNBKToken._unpause">
+
+<path fill="none" stroke="#1bc6a6" stroke-width="2" d="M169.62,-227C202.78,-227 243.96,-227 277.27,-227" style=""/>
+<polygon fill="#1bc6a6" stroke="#1bc6a6" stroke-width="2" points="277.05,-230.5 287.05,-227 277.05,-223.5 277.05,-230.5" style=""/>
+</g>
+<!-- key -->
+<g id="node31" class="node" pointer-events="visible" data-name="key">
+
+<polygon fill="#edad56" stroke="none" stroke-width="3" points="174.1,-814 44.1,-814 44.1,-726 174.1,-726 174.1,-814" style=""/>
+<text text-anchor="start" x="93.73" y="-795.4" font-family="Times,serif" font-size="14.00" style="">Internal Call</text>
+<text text-anchor="start" x="89.85" y="-775.4" font-family="Times,serif" font-size="14.00" style="">External Call</text>
+<text text-anchor="start" x="67.3" y="-755.4" font-family="Times,serif" font-size="14.00" style="">Defined Contract</text>
+<text text-anchor="start" x="53.7" y="-735.4" font-family="Times,serif" font-size="14.00" style="">Undefined Contract</text>
+</g>
+<!-- key2 -->
+<g id="node32" class="node" pointer-events="visible" data-name="key2">
+
+<polygon fill="#edad56" stroke="none" stroke-width="3" points="365.79,-814 311.79,-814 311.79,-726 365.79,-726 365.79,-814" style=""/>
+<text text-anchor="start" x="328.79" y="-795.4" font-family="Times,serif" font-size="14.00" style="">   </text>
+<text text-anchor="start" x="328.79" y="-775.4" font-family="Times,serif" font-size="14.00" style="">   </text>
+<polygon fill="#445773" stroke="none" points="326.79,-750 326.79,-770 351.79,-770 351.79,-750 326.79,-750" style=""/>
+<text text-anchor="start" x="328.79" y="-755.4" font-family="Times,serif" font-size="14.00" style="">   </text>
+<polygon fill="none" stroke="#e8726d" points="328.79,-732 328.79,-748 349.79,-748 349.79,-732 328.79,-732" style=""/>
+</g>
+<!-- key&#45;&gt;key2 -->
+<g id="edge23" class="edge" data-name="key-&gt;key2">
+
+<path fill="none" stroke="#1bc6a6" stroke-width="2" d="M167.1,-800C233.08,-800 252.77,-800 312.79,-800" style=""/>
+<polygon fill="#1bc6a6" stroke="#1bc6a6" stroke-width="2" points="312.77,-803.5 322.77,-800 312.77,-796.5 312.77,-803.5" style=""/>
+</g>
+<!-- key&#45;&gt;key2 -->
+<g id="edge24" class="edge" data-name="key-&gt;key2">
+
+<path fill="none" stroke="white" stroke-width="2" d="M167.1,-780C233.08,-780 252.77,-780 312.79,-780" style=""/>
+<polygon fill="white" stroke="white" stroke-width="2" points="312.77,-783.5 322.77,-780 312.77,-776.5 312.77,-783.5" style=""/>
+</g>
+</g>
+</svg>

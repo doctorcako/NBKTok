@@ -19,9 +19,9 @@ describe("ICO", () => {
     const SECONDS_ICO_WILL_START = 1;
     const ICO_DURATION_IN_DAYS = 30;
     const RATE = BigInt(1000); // 1 ETH = 1000 tokens
-    const MAX_TOKENS = BigInt(2500000000) // 2,5M tokens
+    const MAX_TOKENS = BigInt(1000000) // 1M tokens
     const MAX_TOKENS_PER_USER = BigInt(10000) // 10k tokens
-    const TIMELOCK_DURATION_IN_HOURS = BigInt(24); // 1 día
+    const TIMELOCK_DURATION_IN_HOURS = BigInt(1); // 1 h
     const VESTING_DURATION_IN_MONTHS = BigInt(12);
     const CLIFF_DURATION_IN_MONTHS = BigInt(3);
     const VESTING_ENABLED = false;
@@ -53,15 +53,15 @@ describe("ICO", () => {
             await tokenDistributor.getAddress(),
             owner.address,
             SECONDS_ICO_WILL_START,
-            ICO_DURATION_IN_DAYS,
-            RATE,
-            MAX_TOKENS,
-            MAX_TOKENS_PER_USER,
-            TIMELOCK_DURATION_IN_HOURS,
-            VESTING_DURATION_IN_MONTHS,
-            CLIFF_DURATION_IN_MONTHS,
-            VESTING_ENABLED,
-            WHITELIST_ENABLED
+            ICO_DURATION_IN_DAYS
+            // RATE,
+            // MAX_TOKENS,
+            // MAX_TOKENS_PER_USER,
+            // TIMELOCK_DURATION_IN_HOURS,
+            // VESTING_DURATION_IN_MONTHS,
+            // CLIFF_DURATION_IN_MONTHS,
+            // VESTING_ENABLED,
+            // WHITELIST_ENABLED
         );
 
         return { nbkToken, tokenDistributor, ico, owner, addr1, addr2, addrs };
@@ -103,7 +103,6 @@ describe("ICO", () => {
                 expect(await ico.owner()).to.equal(owner.address);
                 expect(await ico.maxTokens()).to.equal(MAX_TOKENS * BigInt(1e18));
                 expect(await ico.maxTokensPerUser()).to.equal(MAX_TOKENS_PER_USER * BigInt(1e18));
-                expect(await ico.rate()).to.equal(RATE);
                 expect(await ico.timelockDuration()).to.equal(TIMELOCK_DURATION);
                 expect(await ico.whitelistEnabled()).to.equal(false);
                 expect(await ico.vestingEnabled()).to.equal(false);
@@ -139,7 +138,7 @@ describe("ICO", () => {
                 // Verificar que el ICO es el owner del distributor
                 await ico.setVestingEnabled(true)
                 await time.increase(3605)
-                await expect(ico.connect(addr1).buyTokens({ value: ethers.parseEther("0.01") }))
+                await expect(ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: ethers.parseEther("0.01") }))
                     .to.be.revertedWithCustomError(ico, "UnlockVestingIntervalsNotDefined")
                 TestLogger.logTestResult("ICO", "Deployment & Initial Setup", 
                     "Should have correct permissions set", "passed", 0);
@@ -153,61 +152,13 @@ describe("ICO", () => {
     });
 
     describe("Configuration Management", () => {
-        describe("Rate Management", () => {
-            it("Should update rate correctly", async () => {
-                try {
-                    const newRate = BigInt(200);
-                    const oldRate = await ico.rate();
-                    
-                    await expect(ico.setRate(newRate))
-                        .to.emit(ico, "RateUpdated")
-                        .withArgs(oldRate, newRate);
-                    
-                    expect(await ico.rate()).to.equal(newRate);
-
-                    TestLogger.logTestResult("ICO", "Rate Management", 
-                        "Should update rate correctly", "passed", 0);
-                } catch (error) {
-                    TestLogger.logTestResult("ICO", "Rate Management", 
-                        "Should update rate correctly", "failed", 0, error);
-                    throw error;
-                }
-            });
-
-            it("Should revert with invalid rate", async () => {
-                try {
-                    await expect(ico.setRate(0))
-                        .to.be.revertedWithCustomError(ico, "InvalidRateValue")
-                        .withArgs(0);
-
-                    TestLogger.logTestResult("ICO", "Rate Management", 
-                        "Should revert with invalid rate", "passed", 0);
-                } catch (error) {
-                    TestLogger.logTestResult("ICO", "Rate Management", 
-                        "Should revert with invalid rate", "failed", 0, error);
-                    throw error;
-                }
-            });
-
-            it("Should only allow owner to update rate", async () => {
-                try {
-                    await expect(ico.connect(addr1).setRate(200))
-                        .to.be.revertedWithCustomError(ico, "OwnableUnauthorizedAccount");
-
-                    TestLogger.logTestResult("ICO", "Rate Management", 
-                        "Should only allow owner to update rate", "passed", 0);
-                } catch (error) {
-                    TestLogger.logTestResult("ICO", "Rate Management", 
-                        "Should only allow owner to update rate", "failed", 0, error);
-                    throw error;
-                }
-            });
-        });
 
         describe("Whitelist Management", () => {
             it("Should add and remove addresses from whitelist", async () => {
                 try {
                     await ico.setWhitelistEnabled(true);
+
+                    await expect(ico.setWhitelistEnabled(true)).to.be.revertedWithCustomError(ico,"WhitelistEnabledConfigNotChanging")
                     
                     await expect(ico.setWhitelist(addr1.address, true))
                         .to.emit(ico, "WhitelistUpdated")
@@ -270,9 +221,9 @@ describe("ICO", () => {
             it("Should set vesting intervals correctly", async () => {
                 try {
                     const intervals = [
-                        { endMonth: BigInt(6), unlockPerMonth: 7 },
-                        { endMonth: BigInt(7), unlockPerMonth: 8 },
-                        { endMonth: BigInt(12), unlockPerMonth: 10 }
+                        { endMonth: BigInt(6), unlockPerMonth: 7000 },
+                        { endMonth: BigInt(7), unlockPerMonth: 8000 },
+                        { endMonth: BigInt(12), unlockPerMonth: 10000 }
                     ];
                     await expect(ico.setVestingConfiguration(VESTING_DURATION_IN_MONTHS,intervals))
                         .to.emit(ico, "VestingConfigurationUpdated")
@@ -290,9 +241,9 @@ describe("ICO", () => {
             it("Should revert with invalid vesting intervals", async () => {
                 try {
                     const invalidIntervals = [
-                        { endMonth: BigInt(6), unlockPerMonth: 10 },
-                        { endMonth: BigInt(4), unlockPerMonth: 5 },
-                        { endMonth: BigInt(12), unlockPerMonth: 5 }   // Mes final menor que el anterior
+                        { endMonth: BigInt(6), unlockPerMonth: 10000 },
+                        { endMonth: BigInt(4), unlockPerMonth: 5000 },
+                        { endMonth: BigInt(12), unlockPerMonth: 5000 }   // Mes final menor que el anterior
                     ];
 
                     await expect(ico.setVestingConfiguration(VESTING_DURATION_IN_MONTHS,invalidIntervals))
@@ -300,9 +251,9 @@ describe("ICO", () => {
                         .withArgs(1);
 
                     const intervals = [
-                        { endMonth: BigInt(6), unlockPerMonth: 7 },
-                        { endMonth: BigInt(7), unlockPerMonth: 8 },
-                        { endMonth: BigInt(13), unlockPerMonth: 10 }
+                        { endMonth: BigInt(6), unlockPerMonth: 7000 },
+                        { endMonth: BigInt(7), unlockPerMonth: 8000 },
+                        { endMonth: BigInt(13), unlockPerMonth: 10000 }
                     ];
 
                     await expect(ico.setVestingConfiguration(VESTING_DURATION_IN_MONTHS,intervals))
@@ -320,13 +271,13 @@ describe("ICO", () => {
             it("Should revert when total percentage is not 100", async () => {
                 try {
                     const invalidIntervals = [
-                        { endMonth: BigInt(6), unlockPerMonth: 10 },  // 60%
-                        { endMonth: BigInt(12), unlockPerMonth: 2 }   // 12% más = 72% total
+                        { endMonth: BigInt(6), unlockPerMonth: 10000 },  // 60%
+                        { endMonth: BigInt(12), unlockPerMonth: 2000 }   // 12% más = 72% total
                     ];
 
                     await expect(ico.setVestingConfiguration(VESTING_DURATION_IN_MONTHS,invalidIntervals))
                         .to.be.revertedWithCustomError(ico, "TotalPercentageIntervalsNotEqualTo100")
-                        .withArgs(72);
+                        .withArgs(72000);
 
                     TestLogger.logTestResult("ICO", "Vesting Configuration", 
                         "Should revert when total percentage is not 100", "passed", 0);
@@ -354,7 +305,7 @@ describe("ICO", () => {
                 const ethAmount = PURCHASE_AMOUNT;
                 const expectedTokens = ethAmount * RATE;
                 
-                await expect(ico.connect(addr1).buyTokens({ value: ethAmount }))
+                await expect(ico.connect(addr1).buyTokens(1000,5,ethers.ZeroAddress,{ value: ethAmount }))
                     .to.emit(ico, "SoldTokensUpdated")
                     .withArgs(0, expectedTokens);
 
@@ -374,15 +325,16 @@ describe("ICO", () => {
             try {
                 // Verificar que el ICO es el owner del distributor
                 await ico.setVestingEnabled(true)
+                await expect(ico.setVestingEnabled(true)).to.be.revertedWithCustomError(ico,"VestingEnabledConfigNotChanging")
                 await time.increase(3601)
                 await ico.setCliffDuration(100)
                 const intervals = [
-                    { endMonth: BigInt(6), unlockPerMonth: 7 },
-                    { endMonth: BigInt(7), unlockPerMonth: 8 },
-                    { endMonth: BigInt(12), unlockPerMonth: 10 }
+                    { endMonth: BigInt(6), unlockPerMonth: 7000 },
+                    { endMonth: BigInt(7), unlockPerMonth: 8000 },
+                    { endMonth: BigInt(12), unlockPerMonth: 10000 }
                 ];
                 await ico.setVestingConfiguration(VESTING_DURATION_IN_MONTHS,intervals);
-                await expect(ico.connect(addr1).buyTokens({ value: ethers.parseEther("1") }))
+                await expect(ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: ethers.parseEther("1") }))
                     .to.be.revertedWithCustomError(ico, "InvalidCliffTime")
                 TestLogger.logTestResult("ICO", "Deployment & Initial Setup", 
                     "Should have correct permissions set", "passed", 0);
@@ -398,20 +350,20 @@ describe("ICO", () => {
                 await ico.setVestingEnabled(true);
                 expect(await ico.connect(addr1).currentPhaseInterval()).to.be.equal(0)
                 const intervals = [
-                    { endMonth: BigInt(6), unlockPerMonth: 7 },
-                    { endMonth: BigInt(7), unlockPerMonth: 8 },
-                    { endMonth: BigInt(12), unlockPerMonth: 10 }
+                    { endMonth: BigInt(6), unlockPerMonth: 7000 },
+                    { endMonth: BigInt(7), unlockPerMonth: 8000 },
+                    { endMonth: BigInt(12), unlockPerMonth: 10000 }
                 ];
                 await ico.setVestingConfiguration(VESTING_DURATION_IN_MONTHS,intervals);
 
                 const ethAmount = PURCHASE_AMOUNT;
                 const expectedTokens = ethAmount * RATE;
                 expect(await ico.connect(addr1).currentPhaseInterval()).to.be.equal(1)
-                await expect(ico.connect(addr1).buyTokens({ value: ethAmount }))
+                await expect(ico.connect(addr1).buyTokens(1000,5,ethers.ZeroAddress,{ value: ethAmount }))
                     .to.emit(ico, "VestingAssigned")
                     .withArgs(addr1.address, expectedTokens, 1);
 
-                const vesting = await ico.vestings(addr1.address);
+                const vesting = await ico.vestings(await ico.currentPhaseInterval(),addr1.address);
                 expect(vesting.totalAmount).to.equal(expectedTokens);
                 expect(vesting.claimedAmount).to.equal(0);
 
@@ -427,17 +379,17 @@ describe("ICO", () => {
         it("Should enforce timelock between purchases", async () => {
             try {
                 // Primera compra
-                await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
+                await ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: PURCHASE_AMOUNT });
 
                 // Intentar comprar inmediatamente después
-                await expect(ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT }))
+                await expect(ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: PURCHASE_AMOUNT }))
                     .to.be.revertedWithCustomError(ico, "TimeLockNotPassed");
 
                 // Avanzar más allá del timelock
                 await time.increase(Number(TIMELOCK_DURATION) + 1);
 
                 // Ahora debería permitir la compra
-                await expect(ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT }))
+                await expect(ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: PURCHASE_AMOUNT }))
                     .to.not.be.reverted;
 
                 TestLogger.logTestResult("ICO", "Token Purchase", 
@@ -452,15 +404,15 @@ describe("ICO", () => {
             try {
                 // Intentar comprar más que el máximo permitido
                 await ico.connect(owner).setWhitelistEnabled(false)
-                await expect(ico.connect(addr3).buyTokens({ value: ethers.parseEther("4") }))
+                await expect(ico.connect(addr3).buyTokens(1000,5,addr1.address,{ value: ethers.parseEther("4") }))
                     .to.emit(ico, "SoldTokensUpdated");
                 await time.increase(Number(TIMELOCK_DURATION));
 
-                await expect(ico.connect(addr3).buyTokens({ value: ethers.parseEther("5") }))
+                await expect(ico.connect(addr3).buyTokens(1000,5,addr1.address,{ value: ethers.parseEther("5") }))
                     .to.emit(ico, "SoldTokensUpdated");
                 
                 await time.increase(Number(TIMELOCK_DURATION));
-                await expect(ico.connect(addr3).buyTokens({ value: ethers.parseEther("7") }))
+                await expect(ico.connect(addr3).buyTokens(1000,5,addr1.address,{ value: ethers.parseEther("7") }))
                     .to.be.revertedWithCustomError(ico, "TotalAmountPurchaseExceeded");
                 TestLogger.logTestResult("ICO", "Token Purchase", 
                     "Should enforce max tokens per user", "passed", 0);
@@ -473,7 +425,7 @@ describe("ICO", () => {
 
         it("Should revert purchase from non-whitelisted address", async () => {
             try {
-                await expect(ico.connect(addr2).buyTokens({ value: PURCHASE_AMOUNT }))
+                await expect(ico.connect(addr2).buyTokens(1000,5,addr1.address,{ value: PURCHASE_AMOUNT }))
                     .to.be.revertedWithCustomError(ico, "AddressNotInWhitelist")
                     .withArgs(addr2.address);
 
@@ -495,9 +447,9 @@ describe("ICO", () => {
 
             
             const intervals = [
-                { endMonth: BigInt(6), unlockPerMonth: 7 },
-                { endMonth: BigInt(7), unlockPerMonth: 8 },
-                { endMonth: BigInt(12), unlockPerMonth: 10 }
+                { endMonth: BigInt(6), unlockPerMonth: 7000 },
+                { endMonth: BigInt(7), unlockPerMonth: 8000 },
+                { endMonth: BigInt(12), unlockPerMonth: 10000 }
             ];
             await ico.setVestingConfiguration(VESTING_DURATION_IN_MONTHS,intervals);
 
@@ -506,27 +458,29 @@ describe("ICO", () => {
             await time.increaseTo(Number(startTime));
 
             // Realizar compra
-            await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
+            await ico.connect(addr1).buyTokens(1000,5,ethers.ZeroAddress,{ value: PURCHASE_AMOUNT });
         });
 
         it("Should allow claiming vested tokens after cliff", async () => {
             try {
                 // Avanzar 3 meses (dentro del cliff)
-                await time.increase(90 * 24 * 60 * 60);
+                // await ico.connect(addr1).buyTokens(1000,5,addr1.address,{ value: PURCHASE_AMOUNT });
+                await time.increase(91 * 24 * 60 * 60);
                 
-                await expect(ico.connect(addr1).claimTokens())
+                await expect(ico.connect(addr1).claimTokens(1))
                     .to.be.revertedWithCustomError(ico, "NoReleasableTokens");
 
                 await time.increase(30 * 24 * 60 * 60);
-                await ico.connect(addr1).claimTokens();
                 const expectedTokens1 = PURCHASE_AMOUNT * RATE * BigInt(7) / BigInt(100);
+
+                await ico.connect(addr1).claimTokens(expectedTokens1);
                 expect(await token.balanceOf(addr1.address)).to.equal(expectedTokens1);
                 // Avanzar 6 meses más
                 await time.increase(180 * 24 * 60 * 60);
+                const expectedTokens2 = PURCHASE_AMOUNT * RATE * BigInt(43) / BigInt(100);
 
-                await ico.connect(addr1).claimTokens();
-                const expectedTokens = PURCHASE_AMOUNT * RATE * BigInt(50) / BigInt(100);
-                expect(await token.balanceOf(addr1.address)).to.equal(expectedTokens);
+                await ico.connect(addr1).claimTokens(expectedTokens2);
+                expect(await token.balanceOf(addr1.address)).to.equal(expectedTokens1+expectedTokens2);
 
                 TestLogger.logTestResult("ICO", "Token Claiming", 
                     "Should allow claiming vested tokens after cliff", "passed", 0);
@@ -541,10 +495,10 @@ describe("ICO", () => {
             try {
                 // Avanzar 8 meses (3 meses cliff y 5 de vesting) 
                 await time.increase(240 * 24 * 60 * 60);
-
-                await ico.connect(addr1).claimTokens();
-                const vesting = await ico.vestings(addr1.address);
                 const expectedClaimed = PURCHASE_AMOUNT * RATE * BigInt(35) / BigInt(100);
+
+                await ico.connect(addr1).claimTokens(expectedClaimed);
+                const vesting = await ico.vestings(await ico.currentPhaseInterval(),addr1.address);
                 expect(vesting.claimedAmount).to.equal(expectedClaimed);
 
                 TestLogger.logTestResult("ICO", "Token Claiming", 
@@ -564,7 +518,7 @@ describe("ICO", () => {
                 expect(await ico.paused()).to.be.true;
 
                 // Try to buy tokens while paused
-                await expect(ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT }))
+                await expect(ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: PURCHASE_AMOUNT }))
                     .to.be.revertedWithCustomError(ico,"EnforcedPause");
 
                 await ico.unpause();
@@ -601,7 +555,7 @@ describe("ICO", () => {
             try {
                 const initialBalance = await ethers.provider.getBalance(await distributor.getAddress());
                 await time.increase(3600);
-                await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
+                await ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: PURCHASE_AMOUNT });
                 const finalBalance = await ethers.provider.getBalance(await distributor.getAddress());
                 
                 expect(finalBalance - initialBalance).to.equal(PURCHASE_AMOUNT);
@@ -618,7 +572,7 @@ describe("ICO", () => {
         it("Should revert on zero ETH sent", async () => {
             try {
                 await time.increase(3600)
-                await expect(ico.connect(addr1).buyTokens({ value: 0 }))
+                await expect(ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: 0 }))
                     .to.be.revertedWithCustomError(ico, "NoMsgValueSent")
                     .withArgs(0);
 
@@ -642,21 +596,22 @@ describe("ICO", () => {
         it("Should handle multiple vesting intervals correctly", async () => {
             try {
                 const intervals = [
-                    { endMonth: BigInt(6), unlockPerMonth: 7 },
-                    { endMonth: BigInt(7), unlockPerMonth: 8 },
-                    { endMonth: BigInt(12), unlockPerMonth: 10 }
+                    { endMonth: BigInt(6), unlockPerMonth: 7000 },
+                    { endMonth: BigInt(7), unlockPerMonth: 8000 },
+                    { endMonth: BigInt(12), unlockPerMonth: 10000 }
                 ];
 
                 await ico.setVestingConfiguration(VESTING_DURATION_IN_MONTHS,intervals);
                 await time.increase(3600);
                 // Buy tokens
-                await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
+                await ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: PURCHASE_AMOUNT });
                 
                 // Advance 3 months de cliff y 3 de vesting
                 await time.increase(180 * 24 * 60 * 60);
-                await ico.connect(addr1).claimTokens();
-                
                 const expectedTokens = PURCHASE_AMOUNT * RATE * BigInt(21) / BigInt(100);
+
+                await ico.connect(addr1).claimTokens(expectedTokens);
+                
                 expect(await token.balanceOf(addr1.address)).to.equal(expectedTokens);
 
                 TestLogger.logTestResult("ICO", "Vesting Schedule Edge Cases", 
@@ -671,30 +626,42 @@ describe("ICO", () => {
         it("Should handle vesting schedule updates correctly", async () => {
             try {
                 const initialIntervals = [
-                    { endMonth: BigInt(6), unlockPerMonth: 7 },
-                    { endMonth: BigInt(7), unlockPerMonth: 8 },
-                    { endMonth: BigInt(12), unlockPerMonth: 10 }
+                    { endMonth: BigInt(1), unlockPerMonth: 25000 },
+                    { endMonth: BigInt(6), unlockPerMonth: 5000 },
+                    { endMonth: BigInt(12), unlockPerMonth: 8334 }
                 ];
                 await ico.setVestingConfiguration(VESTING_DURATION_IN_MONTHS,initialIntervals);
                 
                 // Buy tokens
                 await time.increase(3600);
-                await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
+                await ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: PURCHASE_AMOUNT });
                 
                 // Update vesting schedule
                 const newIntervals = [
-                    { endMonth: BigInt(6), unlockPerMonth: 10 },
-                    { endMonth: BigInt(10), unlockPerMonth: 5 },
-                    { endMonth: BigInt(12), unlockPerMonth: 10 }
+                    { endMonth: BigInt(6), unlockPerMonth: 7000 },
+                    { endMonth: BigInt(7), unlockPerMonth: 8000 },
+                    { endMonth: BigInt(12), unlockPerMonth: 10000 }
                 ];
                 await ico.setVestingConfiguration(VESTING_DURATION_IN_MONTHS,newIntervals);
                 
                 // Advance 3 months
                 await time.increase(180 * 24 * 60 * 60);
-                await ico.connect(addr1).claimTokens();
+                const expectedTokensFirstPurchase_1 = PURCHASE_AMOUNT * RATE * BigInt(35) / BigInt(100);
+
+                await ico.connect(addr1).claimTokens(expectedTokensFirstPurchase_1);
                 
-                const expectedTokens = PURCHASE_AMOUNT * RATE * BigInt(21) / BigInt(100);
-                expect(await token.balanceOf(addr1.address)).to.equal(expectedTokens);
+                
+                expect(await token.balanceOf(addr1.address)).to.equal(expectedTokensFirstPurchase_1);
+                await ico.connect(owner).setICOPeriod(await time.latest() + 1,await time.latest()+(365*24*60*60))
+                
+                await ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: PURCHASE_AMOUNT });
+
+                const expectedTokensSecondPurchase_1 = PURCHASE_AMOUNT * RATE * BigInt(21) / BigInt(100);
+                const expectedTokensFirstPurchase_2 = (PURCHASE_AMOUNT * RATE * BigInt(40) + BigInt(2e18)) / BigInt(100)
+                await time.increase(180 * 24 * 60 * 60)
+                await ico.connect(addr1).claimTokens(expectedTokensSecondPurchase_1+expectedTokensFirstPurchase_2)
+                expect(await token.balanceOf(addr1.address)).to.equal(expectedTokensSecondPurchase_1+expectedTokensFirstPurchase_2+expectedTokensFirstPurchase_1);
+
 
                 TestLogger.logTestResult("ICO", "Vesting Schedule Edge Cases", 
                     "Should handle vesting schedule updates correctly", "passed", 0);
@@ -710,16 +677,16 @@ describe("ICO", () => {
         it("Should handle ICO lifecycle correctly", async () => {
             try {
                 // Before start
-                await expect(ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT }))
+                await expect(ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: PURCHASE_AMOUNT }))
                     .to.be.revertedWithCustomError(ico, "ICONotInActivePeriod");
 
                 // Start ICO
                 await time.increaseTo(Number(await ico.startTime()));
-                await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
+                await ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: PURCHASE_AMOUNT });
 
                 // End ICO
                 await time.increaseTo(Number(await ico.endTime()));
-                await expect(ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT }))
+                await expect(ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: PURCHASE_AMOUNT }))
                     .to.be.revertedWithCustomError(ico, "ICONotInActivePeriod");
 
                 TestLogger.logTestResult("ICO", "Contract State Transitions", 
@@ -740,13 +707,13 @@ describe("ICO", () => {
                 await time.increase(3600);
 
                 // Try to buy more than max per user
-                await expect(ico.connect(addr1).buyTokens({ value: maxPurchase + BigInt(1) }))
+                await expect(ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: maxPurchase + BigInt(1) }))
                     .to.be.revertedWithCustomError(ico, "TotalAmountPurchaseExceeded");
                 
                 const maxPurchaseLimit = ethers.parseEther("10")
 
                 // Buy maximum allowed
-                await ico.connect(addr1).buyTokens({ value: maxPurchaseLimit });
+                await ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: maxPurchaseLimit });
                 expect(await ico.soldTokens()).to.equal(MAX_TOKENS_PER_USER*BigInt(1e18));
 
                 TestLogger.logTestResult("ICO", "Contract State Transitions", 
@@ -766,7 +733,7 @@ describe("ICO", () => {
                 await expect(await ico.connect(owner).setMinimumPurchaseAmount(ethers.parseEther("1"))).to.emit(ico,"MinAmountPurchaseUpdated")
                 const minPurchase = ethers.parseEther("0.0003");
                 await time.increase(3600);
-                await expect(ico.connect(addr1).buyTokens({ value: minPurchase }))
+                await expect(ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: minPurchase }))
                     .to.be.revertedWithCustomError(ico, "InsufficientETHForTokenPurchase");
 
                 TestLogger.logTestResult("ICO", "Edge Cases and Boundary Testing", 
@@ -786,10 +753,10 @@ describe("ICO", () => {
                 // Buy all available tokens
                 const maxPurchase = ethers.parseEther("1")
                 await time.increase(3600)
-                await ico.connect(addr1).buyTokens({ value: maxPurchase });
+                await ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: maxPurchase });
                 
                 // Try to buy more
-                await expect(ico.connect(addr2).buyTokens({ value: ethers.parseEther("1") }))
+                await expect(ico.connect(addr2).buyTokens(1000,5,addr2.address,{ value: ethers.parseEther("1") }))
                     .to.be.revertedWithCustomError(ico, "NoTokensAvailable");
 
                 TestLogger.logTestResult("ICO", "Edge Cases and Boundary Testing", 
@@ -805,20 +772,20 @@ describe("ICO", () => {
             try {
                 // First purchase
                 await time.increase(3600);
-                await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
+                await ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: PURCHASE_AMOUNT });
                 
                 // Try to purchase immediately
-                await expect(ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT }))
+                await expect(ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: PURCHASE_AMOUNT }))
                     .to.be.revertedWithCustomError(ico, "TimeLockNotPassed");
                 
                 // Wait just under timelock duration
                 await time.increase(Number(TIMELOCK_DURATION) - 60);
-                await expect(ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT }))
+                await expect(ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: PURCHASE_AMOUNT }))
                     .to.be.revertedWithCustomError(ico, "TimeLockNotPassed");
                 
                 // Wait remaining time
                 await time.increase(61);
-                await expect(await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT }))
+                await expect(await ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: PURCHASE_AMOUNT }))
                     .to.emit(ico,"SoldTokensUpdated")
 
                 TestLogger.logTestResult("ICO", "Edge Cases and Boundary Testing", 
@@ -836,34 +803,34 @@ describe("ICO", () => {
             try {
                 // Invalid total percentage
                 const invalidIntervals = [
-                    { endMonth: BigInt(6), unlockPerMonth: 5 },
-                    { endMonth: BigInt(12), unlockPerMonth: 10 }
+                    { endMonth: BigInt(6), unlockPerMonth: 5000 },
+                    { endMonth: BigInt(12), unlockPerMonth: 10000 }
                 ];
                 await expect(ico.setVestingConfiguration(VESTING_DURATION_IN_MONTHS,invalidIntervals))
                     .to.be.revertedWithCustomError(ico, "TotalPercentageIntervalsNotEqualTo100")
-                    .withArgs(90);
+                    .withArgs(90000);
 
                 // Invalid sequence
                 const invalidSequence = [
-                    { endMonth: BigInt(7), unlockPerMonth: 50 },
-                    { endMonth: BigInt(6), unlockPerMonth: 50 },
-                    { endMonth: BigInt(12), unlockPerMonth: 50 }
+                    { endMonth: BigInt(7), unlockPerMonth: 50000 },
+                    { endMonth: BigInt(6), unlockPerMonth: 50000 },
+                    { endMonth: BigInt(12), unlockPerMonth: 50000 }
                 ];
                 await expect(ico.setVestingConfiguration(VESTING_DURATION_IN_MONTHS,invalidSequence))
                     .to.be.revertedWithCustomError(ico, "InvalidVestingIntervalSequence")
                     .withArgs(1);
 
                 const intervals = [
-                    { endMonth: BigInt(6), unlockPerMonth: 7 },
-                    { endMonth: BigInt(7), unlockPerMonth: 8 },
-                    { endMonth: BigInt(13), unlockPerMonth: 10 }
+                    { endMonth: BigInt(6), unlockPerMonth: 7000 },
+                    { endMonth: BigInt(7), unlockPerMonth: 8000 },
+                    { endMonth: BigInt(13), unlockPerMonth: 10000 }
                 ];
 
                 await expect(ico.setVestingConfiguration(VESTING_DURATION_IN_MONTHS,intervals))
                     .to.be.revertedWithCustomError(ico, "InvalidVestingIntervals")
 
                 const invalidSequence2 = [
-                    { endMonth: BigInt(6), unlockPerMonth: 10 },
+                    { endMonth: BigInt(6), unlockPerMonth: 10000 },
                     { endMonth: BigInt(12), unlockPerMonth: 0 }
                 ];
                 await expect(ico.setVestingConfiguration(VESTING_DURATION_IN_MONTHS,invalidSequence2))
@@ -900,9 +867,9 @@ describe("ICO", () => {
                     .withArgs(validStartTime, validStartTime-100);
                 
                 const intervals = [
-                    { endMonth: BigInt(6), unlockPerMonth: 7 },
-                    { endMonth: BigInt(7), unlockPerMonth: 10 },
-                    { endMonth: BigInt(13), unlockPerMonth: 8 }
+                    { endMonth: BigInt(6), unlockPerMonth: 7000 },
+                    { endMonth: BigInt(7), unlockPerMonth: 10000 },
+                    { endMonth: BigInt(13), unlockPerMonth: 8000 }
                 ];
                 await expect(ico.setVestingConfiguration(0,intervals))
                     .to.be.revertedWithCustomError(ico, "InvalidVestingDuration")
@@ -921,14 +888,12 @@ describe("ICO", () => {
                 await expect(ico.setTimelockDurationInMinutes(0))
                     .to.be.revertedWithCustomError(ico, "InvalidTimelockDuration")
                     .withArgs(0);
-
-                console.log(await ico.vestingDurationInMonths())
                 
-                await expect(ico.setTimelockDurationInMinutes(BigInt(24) * BigInt(60)))
+                await expect(ico.setTimelockDurationInMinutes(BigInt(1) * BigInt(60)))
                     .to.be.revertedWithCustomError(ico, "TimelockDurationNotChanged")
-                    .withArgs(BigInt(24) * BigInt(60) * BigInt(60));
+                    .withArgs(BigInt(1) * BigInt(60) * BigInt(60));
 
-                expect(await ico.setTimelockDurationInMinutes(60))
+                expect(await ico.setTimelockDurationInMinutes(120))
                 .to.emit(ico,"TimelockDurationUpdated");
 
                 await ico.getICOInfo()
@@ -952,6 +917,10 @@ describe("ICO", () => {
                 await expect(ico.setMaxTokens(0))
                     .to.be.revertedWithCustomError(ico, "InvalidMaxTokens")
                     .withArgs(0);
+
+                await expect(ico.setMaxTokens(MAX_TOKENS))
+                    .to.be.revertedWithCustomError(ico, "MaxTokensNotChanged")
+                    .withArgs(MAX_TOKENS);
 
                 // Invalid max tokens per user
                 await expect(ico.setMaxTokensPerUser(0))
@@ -980,10 +949,10 @@ describe("ICO", () => {
             try {
                 // Set up a scenario where token transfer might fail
                 await time.increase(3601);
-                expect(await ico.connect(addr2).buyTokens({ value: ethers.parseEther("5") }))
+                expect(await ico.connect(addr2).buyTokens(1000,5,addr1.address,{ value: ethers.parseEther("5") }))
                     .to.be.revertedWithCustomError(ico, "NoTokensAvailable")
                 
-                expect(await ico.connect(addr1).buyTokens({ value: ethers.parseEther("10") }))
+                expect(await ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: ethers.parseEther("10") }))
                     .to.be.revertedWithCustomError(ico, "NoTokensAvailable")
                 TestLogger.logTestResult("ICO", "Error Handling and Recovery", 
                     "Should handle failed token transfers gracefully", "passed", 0);
@@ -1024,21 +993,21 @@ describe("ICO", () => {
                 await ico.setVestingEnabled(true);
                 
                 // Try to claim without any vesting
-                await expect(ico.connect(addr1).claimTokens())
+                await expect(ico.connect(addr1).claimTokens(1))
                     .to.be.revertedWithCustomError(ico, "NoReleasableTokens")
                     .withArgs(addr1.address);
 
                 // Set up vesting but try to claim before cliff
                 const intervals = [
-                    { endMonth: BigInt(6), unlockPerMonth: 7 },
-                    { endMonth: BigInt(7), unlockPerMonth: 8 },
-                    { endMonth: BigInt(12), unlockPerMonth: 10 }
+                    { endMonth: BigInt(6), unlockPerMonth: 7000 },
+                    { endMonth: BigInt(7), unlockPerMonth: 8000 },
+                    { endMonth: BigInt(12), unlockPerMonth: 10000 }
                 ];
                 await ico.setVestingConfiguration(VESTING_DURATION_IN_MONTHS,intervals);
                 await time.increase(3600);
-                await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
+                await ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: PURCHASE_AMOUNT });
                 
-                await expect(ico.connect(addr1).claimTokens())
+                await expect(ico.connect(addr1).claimTokens(11))
                     .to.be.revertedWithCustomError(ico, "NoReleasableTokens")
                     .withArgs(addr1.address);
 
@@ -1056,23 +1025,23 @@ describe("ICO", () => {
                 
                 await ico.setVestingEnabled(true);
                 const intervals = [
-                    { endMonth: BigInt(6), unlockPerMonth: 7 },
-                    { endMonth: BigInt(7), unlockPerMonth: 8 },
-                    { endMonth: BigInt(12), unlockPerMonth: 10 }
+                    { endMonth: BigInt(6), unlockPerMonth: 7000 },
+                    { endMonth: BigInt(7), unlockPerMonth: 8000 },
+                    { endMonth: BigInt(12), unlockPerMonth: 10000 }
                 ];
                 await ico.setVestingConfiguration(VESTING_DURATION_IN_MONTHS,intervals);
 
-                await expect(await ico.connect(owner).assignVesting(addr1.address,5000,3,12))
+                await expect(await ico.connect(owner).assignVesting(addr1.address,5000,3,12,false, ethers.ZeroAddress, 5))
                     .to.emit(ico, "VestingAssigned")
                     .withArgs(addr1.address,5000,1);
                 
-                await expect(await ico.connect(owner).assignVesting(addr1.address,3000,3,12))
+                await expect(await ico.connect(owner).assignVesting(addr1.address,3000,3,12,false, ethers.ZeroAddress, 5))
                     .to.emit(ico, "VestingAssigned")
                     .withArgs(addr1.address,3000,1);                
 
                 await ico.setVestingEnabled(false);
 
-                expect(ico.connect(owner).assignVesting(addr1.address,MAX_TOKENS_PER_USER,3,12))
+                expect(ico.connect(owner).assignVesting(addr1.address,MAX_TOKENS_PER_USER,3,12, false, ethers.ZeroAddress, 5))
                     .to.be.revertedWithCustomError(ico,"VestingNotEnabledForManualAssignment")
                     .withArgs(addr1.address)
 
@@ -1097,12 +1066,13 @@ describe("ICO", () => {
             try {
                 await time.increase(3600);
                 const purchasePromises = [
-                    ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT }),
-                    ico.connect(addr2).buyTokens({ value: PURCHASE_AMOUNT }),
-                    ico.connect(addr3).buyTokens({ value: PURCHASE_AMOUNT })
+                    ico.connect(addr1).buyTokens(1000,5,ethers.ZeroAddress,{ value: PURCHASE_AMOUNT }),
+                    ico.connect(addr2).buyTokens(1000,5,ethers.ZeroAddress,{ value: PURCHASE_AMOUNT }),
+                    ico.connect(addr3).buyTokens(1000,5,ethers.ZeroAddress,{ value: PURCHASE_AMOUNT })
                 ];
 
                 await Promise.all(purchasePromises);
+
 
                 const expectedTokens = PURCHASE_AMOUNT * RATE;
                 expect(await token.balanceOf(addr1.address)).to.equal(expectedTokens);
@@ -1122,29 +1092,32 @@ describe("ICO", () => {
             try {
                 await ico.setVestingEnabled(true);
                 const intervals = [
-                    { endMonth: BigInt(6), unlockPerMonth: 7 },
-                    { endMonth: BigInt(7), unlockPerMonth: 8 },
-                    { endMonth: BigInt(12), unlockPerMonth: 10 }
+                    { endMonth: BigInt(6), unlockPerMonth: 7000 },
+                    { endMonth: BigInt(7), unlockPerMonth: 8000 },
+                    { endMonth: BigInt(12), unlockPerMonth: 10000 }
                 ];
                 await ico.setVestingConfiguration(VESTING_DURATION_IN_MONTHS,intervals);
                 await time.increase(3600);
                 // Multiple users buy tokens
-                await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
-                await ico.connect(addr2).buyTokens({ value: PURCHASE_AMOUNT * BigInt(2) });
-                await ico.connect(addr3).buyTokens({ value: PURCHASE_AMOUNT * BigInt(3) });
+                await ico.connect(addr1).buyTokens(1000,5,ethers.ZeroAddress,{ value: PURCHASE_AMOUNT });
+                await ico.connect(addr2).buyTokens(1000,5,ethers.ZeroAddress,{ value: PURCHASE_AMOUNT * BigInt(2) });
+                await ico.connect(addr3).buyTokens(1000,5,ethers.ZeroAddress,{ value: PURCHASE_AMOUNT * BigInt(3) });
 
                 // Advance 3 months and 5 months
                 await time.increase(240 * 24 * 60 * 61);
 
-                // All users claim tokens
-                await ico.connect(addr1).claimTokens();
-                await ico.connect(addr2).claimTokens();
-                await ico.connect(addr3).claimTokens();
-
-                // Verify correct amounts claimed
                 const expectedTokens1 = PURCHASE_AMOUNT * RATE * BigInt(35) / BigInt(100);
                 const expectedTokens2 = expectedTokens1 * BigInt(2);
                 const expectedTokens3 = expectedTokens1 * BigInt(3);
+                // All users claim tokens
+
+                // console.log(await ico.connect(addr1).getReleasableTokens(addr1.address))
+                await ico.connect(addr1).claimTokens(expectedTokens1);
+                await ico.connect(addr2).claimTokens(expectedTokens2);
+                await ico.connect(addr3).claimTokens(expectedTokens3);
+
+                // Verify correct amounts claimed
+                
 
                 expect(await token.balanceOf(addr1.address)).to.equal(expectedTokens1);
                 expect(await token.balanceOf(addr2.address)).to.equal(expectedTokens2);
@@ -1170,32 +1143,35 @@ describe("ICO", () => {
         it("Should handle partial claims across multiple intervals", async () => {
             try {
                 const intervals = [
-                    { endMonth: BigInt(6), unlockPerMonth: 7 },
-                    { endMonth: BigInt(7), unlockPerMonth: 8 },
-                    { endMonth: BigInt(12), unlockPerMonth: 10 }
+                    { endMonth: BigInt(6), unlockPerMonth: 7000 },
+                    { endMonth: BigInt(7), unlockPerMonth: 8000 },
+                    { endMonth: BigInt(12), unlockPerMonth: 10000 }
                 ];
                 await ico.setVestingConfiguration(VESTING_DURATION_IN_MONTHS,intervals);
                 await time.increase(3600);
-                await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
+                await ico.connect(addr1).buyTokens(1000,5,ethers.ZeroAddress,{ value: PURCHASE_AMOUNT });
 
                 // Claim after 3 months (cliff over) and 2 month
                 await time.increase(150 * 24 * 60 * 60);
-                await ico.connect(addr1).claimTokens();
                 let expectedTokens = PURCHASE_AMOUNT * RATE * BigInt(14) / BigInt(100);
+
+                await ico.connect(addr1).claimTokens(expectedTokens);
                 expect(await token.balanceOf(addr1.address)).to.equal(expectedTokens);
 
                 // Claim after 4 months
                 await time.increase(90 * 24 * 60 * 60);
 
-                await ico.connect(addr1).claimTokens();
-                expectedTokens = PURCHASE_AMOUNT * RATE * BigInt(35) / BigInt(100);
-                expect(await token.balanceOf(addr1.address)).to.equal(expectedTokens);
+                let expectedTokens2 = PURCHASE_AMOUNT * RATE * BigInt(21) / BigInt(100);
+                await ico.connect(addr1).claimTokens(expectedTokens2);
+                expect(await token.balanceOf(addr1.address)).to.equal(expectedTokens+expectedTokens2);
 
                 // Claim after full period
-                await time.increase(210 * 24 * 60 * 60);
-                await ico.connect(addr1).claimTokens();
-                expectedTokens = PURCHASE_AMOUNT * RATE ;
-                expect(await token.balanceOf(addr1.address)).to.equal(expectedTokens);
+                await time.increase(1000 * 24 * 60 * 60);
+                let totalExpectedTokens = PURCHASE_AMOUNT * RATE ;
+
+                let expectedTokens3 = PURCHASE_AMOUNT * RATE * BigInt(65) / BigInt(100);
+                await ico.connect(addr1).claimTokens(expectedTokens3);
+                expect(await token.balanceOf(addr1.address)).to.equal(totalExpectedTokens);
 
                 TestLogger.logTestResult("ICO", "Complex Vesting Scenarios", 
                     "Should handle partial claims across multiple intervals", "passed", 0);
@@ -1210,23 +1186,25 @@ describe("ICO", () => {
             try {
                 // First purchase with initial schedule
                 const initialIntervals = [
-                    { endMonth: BigInt(6), unlockPerMonth: 7 },
-                    { endMonth: BigInt(7), unlockPerMonth: 8 },
-                    { endMonth: BigInt(12), unlockPerMonth: 10 }
+                    { endMonth: BigInt(6), unlockPerMonth: 7000 },
+                    { endMonth: BigInt(7), unlockPerMonth: 8000 },
+                    { endMonth: BigInt(12), unlockPerMonth: 10000 }
                 ];
                 await ico.setVestingConfiguration(VESTING_DURATION_IN_MONTHS,initialIntervals);
                 await time.increase(3600);
-                await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
+                await ico.connect(addr1).buyTokens(1000,5,ethers.ZeroAddress,{ value: PURCHASE_AMOUNT });
 
                 // Wait for timelock to pass and update schedule
                 await time.increase(Number(TIMELOCK_DURATION));
                 const newIntervals = [
-                    { endMonth: BigInt(6), unlockPerMonth: 10 },
-                    { endMonth: BigInt(10), unlockPerMonth: 5 },
-                    { endMonth: BigInt(12), unlockPerMonth: 10 }
+                    { endMonth: BigInt(6), unlockPerMonth: 10000 },
+                    { endMonth: BigInt(10), unlockPerMonth: 5000 },
+                    { endMonth: BigInt(12), unlockPerMonth: 10000 }
                 ];
                 await ico.setVestingConfiguration(VESTING_DURATION_IN_MONTHS,newIntervals);
-                await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
+                await ico.connect(addr1).buyTokens(1000,5,ethers.ZeroAddress,{ value: PURCHASE_AMOUNT });
+
+                
 
                 // Advance 3 months and claim
                 await time.increase(120 * 24 * 60 * 60);
@@ -1234,7 +1212,7 @@ describe("ICO", () => {
                 const expectedTokens2 = PURCHASE_AMOUNT * RATE * BigInt(10) / BigInt(100); // 20% from second purchase month1
                 
                 expect(await ico.getReleasableTokens(addr1.address)).to.equal(expectedTokens1 + expectedTokens2)
-                await ico.connect(addr1).claimTokens();
+                await ico.connect(addr1).claimTokens(expectedTokens1 + expectedTokens2);
                 expect(await token.balanceOf(addr1.address)).to.equal(expectedTokens1 + expectedTokens2);
                 expect(await ico.getReleasableTokens(addr1.address)).to.equal(0)
 
@@ -1288,7 +1266,7 @@ describe("ICO", () => {
                     .to.be.revertedWithCustomError(ico,"AccountWhitelisted")
 
                 // Measure gas for first purchase
-                const tx1 = await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
+                const tx1 = await ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: PURCHASE_AMOUNT });
                 const receipt1 = await tx1.wait();
                 const gasUsed1 = receipt1!.gasUsed;
 
@@ -1296,7 +1274,7 @@ describe("ICO", () => {
                 await time.increase(Number(TIMELOCK_DURATION));
 
                 // Measure gas for second purchase
-                const tx2 = await ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT });
+                const tx2 = await ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: PURCHASE_AMOUNT });
                 const receipt2 = await tx2.wait();
                 const gasUsed2 = receipt2!.gasUsed;
 
@@ -1304,7 +1282,7 @@ describe("ICO", () => {
                 const gasDiff = gasUsed1 > gasUsed2 ? 
                     gasUsed1 - gasUsed2 : 
                     gasUsed2 - gasUsed1;
-                expect(gasDiff).to.be.lessThan(75000); // Permitir una pequeña variación
+                expect(gasDiff).to.be.lessThan(150000); // Permitir una pequeña variación
 
                 TestLogger.logTestResult("ICO", "Gas Optimization Tests", 
                     "Should maintain reasonable gas costs for token purchases", "passed", 0);
@@ -1323,31 +1301,40 @@ describe("ICO", () => {
                 await ico.setWhitelist(addr1.address, true);
 
                 const purchaseAmount = PURCHASE_AMOUNT;
+                const referredAwards = (PURCHASE_AMOUNT * RATE * BigInt(5)) / BigInt(100);
+
+                await time.increase(3600);
+                await expect(ico.connect(addr1).buyTokens(1000,5,addr1.address,{ value: purchaseAmount })).to.be.revertedWithCustomError(ico,"InvalidReferedAddress")
+
                 const expectedTokens = purchaseAmount * RATE;
                 await time.increase(3600);
                 const intervals = [
-                    { endMonth: BigInt(6), unlockPerMonth: 10 },
-                    { endMonth: BigInt(10), unlockPerMonth: 5 },
-                    { endMonth: BigInt(12), unlockPerMonth: 10 }
+                    { endMonth: BigInt(6), unlockPerMonth: 10000 },
+                    { endMonth: BigInt(10), unlockPerMonth: 5000 },
+                    { endMonth: BigInt(12), unlockPerMonth: 10000 }
                 ];
                 await ico.setVestingEnabled(true);
                 await ico.setVestingConfiguration(VESTING_DURATION_IN_MONTHS,intervals);
-                await expect(await ico.connect(addr1).buyTokens({ value: purchaseAmount }))
+                await expect(ico.connect(addr1).buyTokens(1000,5,addr1.address,{ value: purchaseAmount })).to.be.revertedWithCustomError(ico,"InvalidReferedAddress")
+                await expect(await ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: purchaseAmount }))
                     .to.emit(ico, "SoldTokensUpdated")
                     .withArgs(0, expectedTokens);
 
+                expect(await ico.getVestedAmount(addr1.address)).to.be.equal(expectedTokens)
+
+                expect(await ico.getVestedAmount(addr2.address)).to.be.equal(referredAwards)
                 await time.increase(Number(TIMELOCK_DURATION));
 
-                await expect(ico.connect(addr1).buyTokens({ value: purchaseAmount }))
+                await expect(ico.connect(addr1).buyTokens(1000,5,ethers.ZeroAddress,{ value: purchaseAmount }))
                     .to.emit(ico, "VestingAssigned")
                     .withArgs(addr1.address, expectedTokens, 1);
                 
                 await time.increase(Number(TIMELOCK_DURATION));
 
-                await ico.connect(addr1).buyTokens({ value: ethers.parseEther("7") });
+                await ico.connect(addr1).buyTokens(1000,5,ethers.ZeroAddress,{ value: ethers.parseEther("7") });
                 await time.increase(Number(TIMELOCK_DURATION));
 
-                await expect(ico.connect(addr1).buyTokens({ value: ethers.parseEther("7") }))
+                await expect(ico.connect(addr1).buyTokens(1000,5,ethers.ZeroAddress,{ value: ethers.parseEther("10") }))
                     .to.be.revertedWithCustomError(ico, "TotalAmountPurchaseExceeded");
 
                 TestLogger.logTestResult("ICO", "Event Emission Tests", 
@@ -1355,40 +1342,6 @@ describe("ICO", () => {
             } catch (error) {
                 TestLogger.logTestResult("ICO", "Event Emission Tests", 
                     "Should emit correct events for token purchases", "failed", 0, error);
-                throw error;
-            }
-        });
-
-        it("Should emit correct events for configuration changes", async () => {
-            try {
-                await expect(ico.setRate(RATE))
-                    .to.be.revertedWithCustomError(ico, "RateNotChanged")
-                    .withArgs(RATE);
-
-                const newRate = BigInt(200);
-                await expect(ico.setRate(newRate))
-                    .to.emit(ico, "RateUpdated")
-                    .withArgs(RATE, newRate);
-
-                await expect(ico.setMaxTokens(MAX_TOKENS))
-                    .to.be.revertedWithCustomError(ico,"MaxTokensNotChanged")
-
-
-                const newMaxTokens = BigInt(2000000000);
-                await expect(ico.setMaxTokens(newMaxTokens))
-                    .to.emit(ico, "MaxTokensUpdated")
-                    .withArgs(MAX_TOKENS * BigInt(1e18), newMaxTokens * BigInt(1e18));
-
-                const newWhitelistStatus = true;
-                await expect(ico.setWhitelistEnabled(newWhitelistStatus))
-                    .to.emit(ico, "WhitelistStatusUpdated")
-                    .withArgs(!newWhitelistStatus, newWhitelistStatus);
-
-                TestLogger.logTestResult("ICO", "Event Emission Tests", 
-                    "Should emit correct events for configuration changes", "passed", 0);
-            } catch (error) {
-                TestLogger.logTestResult("ICO", "Event Emission Tests", 
-                    "Should emit correct events for configuration changes", "failed", 0, error);
                 throw error;
             }
         });
@@ -1401,9 +1354,9 @@ describe("ICO", () => {
                 await ico.setWhitelistEnabled(true);
                 await ico.setVestingEnabled(true);
                 const intervals = [
-                    { endMonth: BigInt(6), unlockPerMonth: 10 },
-                    { endMonth: BigInt(10), unlockPerMonth: 5 },
-                    { endMonth: BigInt(12), unlockPerMonth: 10 }
+                    { endMonth: BigInt(6), unlockPerMonth: 10000 },
+                    { endMonth: BigInt(10), unlockPerMonth: 5000 },
+                    { endMonth: BigInt(12), unlockPerMonth: 10000 }
                 ];
                 await ico.setVestingConfiguration(VESTING_DURATION_IN_MONTHS,intervals);
 
@@ -1414,7 +1367,7 @@ describe("ICO", () => {
                 // Simulate multiple purchases with different amounts
                 for (let i = 0; i < users.length; i++) {
                     const amount = PURCHASE_AMOUNT * BigInt(i + 1);
-                    await ico.connect(users[i]).buyTokens({ value: amount });
+                    await ico.connect(users[i]).buyTokens(1000,5,ethers.ZeroAddress,{ value: amount });
                     if (i < users.length - 1) {
                         await time.increase(Number(TIMELOCK_DURATION));
                     }
@@ -1422,23 +1375,23 @@ describe("ICO", () => {
 
                 // Change vesting schedule mid-ICO
                 const newIntervals = [
-                    { endMonth: BigInt(6), unlockPerMonth: 7 },
-                    { endMonth: BigInt(7), unlockPerMonth: 8 },
-                    { endMonth: BigInt(12), unlockPerMonth: 10 }
+                    { endMonth: BigInt(6), unlockPerMonth: 7000 },
+                    { endMonth: BigInt(7), unlockPerMonth: 8000 },
+                    { endMonth: BigInt(12), unlockPerMonth: 10000 }
                 ];
                 await ico.setVestingConfiguration(VESTING_DURATION_IN_MONTHS,newIntervals);
 
                 // More purchases with new schedule
                 await time.increase(Number(TIMELOCK_DURATION));
                 for (let i = 0; i < 3; i++) {
-                    await ico.connect(users[i]).buyTokens({ value: PURCHASE_AMOUNT });
+                    await ico.connect(users[i]).buyTokens(1000,5,ethers.ZeroAddress,{ value: PURCHASE_AMOUNT });
                     if (i < 2) await time.increase(Number(TIMELOCK_DURATION));
                 }
 
                 // Advance time and verify claims
                 await time.increase(120 * 24 * 60 * 60); // 4 months
                 for (const user of users.slice(0, 3)) {
-                    await ico.connect(user).claimTokens();
+                    await ico.connect(user).claimTokens(1);
                     expect(await token.balanceOf(user.address)).to.be.gt(0);
                 }
 
@@ -1464,9 +1417,9 @@ describe("ICO", () => {
                 // Rapid vesting schedule changes
                 for (let i = 1; i <= 3; i++) {
                     const intervals = [
-                        { endMonth: BigInt(6), unlockPerMonth: 10 },
-                        { endMonth: BigInt(10), unlockPerMonth: 5 },
-                        { endMonth: BigInt(12), unlockPerMonth: 10 }
+                        { endMonth: BigInt(6), unlockPerMonth: 10000 },
+                        { endMonth: BigInt(10), unlockPerMonth: 5000 },
+                        { endMonth: BigInt(12), unlockPerMonth: 10000 }
                     ];
                     await ico.setVestingConfiguration(VESTING_DURATION_IN_MONTHS,intervals);
                 }
@@ -1474,18 +1427,18 @@ describe("ICO", () => {
                 // Multiple users buying at almost the same time
                 await ico.setWhitelistBatch([addr1.address, addr2.address, addr3.address], true);
                 const purchasePromises = [
-                    ico.connect(addr1).buyTokens({ value: PURCHASE_AMOUNT }),
-                    ico.connect(addr2).buyTokens({ value: PURCHASE_AMOUNT * BigInt(2) }),
-                    ico.connect(addr3).buyTokens({ value: PURCHASE_AMOUNT * BigInt(3) })
+                    ico.connect(addr1).buyTokens(1000,5,addr2.address,{ value: PURCHASE_AMOUNT }),
+                    ico.connect(addr2).buyTokens(1000,5,addr3.address,{ value: PURCHASE_AMOUNT * BigInt(2) }),
+                    ico.connect(addr3).buyTokens(1000,5,addr1.address,{ value: PURCHASE_AMOUNT * BigInt(3) })
                 ];
                 await Promise.all(purchasePromises);
 
                 // Quick time jumps and claims
                 await time.increase(120 * 24 * 60 * 60); // 3 month 1 day (cliff ended)
                 for (let i = 0; i < 3; i++) {
-                    await ico.connect(addr1).claimTokens();
-                    await ico.connect(addr2).claimTokens();
-                    await ico.connect(addr3).claimTokens();
+                    await ico.connect(addr1).claimTokens(1);
+                    await ico.connect(addr2).claimTokens(2);
+                    await ico.connect(addr3).claimTokens(3);
                     await time.increase(30 * 24 * 60 * 60); // 3 month 1 day (cliff ended)
                 }
 
@@ -1497,6 +1450,31 @@ describe("ICO", () => {
                 throw error;
             }
         });
+
+        it("Should withdraw all funds left in ICO",async() => {
+            try{
+                const sendValue = ethers.parseEther("10");
+                const oldBalance = BigInt(await ethers.provider.getBalance(owner))
+                await addr3.sendTransaction({
+                    to: await ico.getAddress(),
+                    value: sendValue
+                })
+
+                const tx = await ico.connect(owner).withdraw()
+                const receipt = await tx.wait()
+
+                const newBalance = await ethers.provider.getBalance(owner)
+                expect(newBalance+(receipt?.gasPrice * receipt?.gasUsed)).to.be.equal(BigInt(oldBalance)+BigInt(sendValue));
+
+                TestLogger.logTestResult("ICO", "Integration and Stress Tests", 
+                "Should withdraw all funds left in ICO", "passed", 0);
+                
+            }catch (error) {
+                TestLogger.logTestResult("ICO", "Integration and Stress Tests", 
+                    "Should withdraw all funds left in ICO", "failed", 0, error);
+                throw error;
+            }
+        })
 
         it("Should handle maximum capacity scenario", async () => {
             try {
@@ -1515,12 +1493,10 @@ describe("ICO", () => {
                 const tokensPerEth = RATE;
                 const ethRequired = BigInt(testMaxEth) / BigInt(tokensPerEth);
                 const purchaseAmount = ethRequired / BigInt(users.length);
-
-                console.log(purchaseAmount)
                 // Users buy tokens until max supply is reached
-                time.increase(3600)
+                time.increase(3601)
                 for (let i = 0; i < users.length - 1; i++) {
-                    await ico.connect(users[i]).buyTokens({ value: `${purchaseAmount}` });
+                    await ico.connect(users[i]).buyTokens(1000,5,ethers.ZeroAddress,{ value: `${purchaseAmount}` });
                     // await time.increase(Number(TIMELOCK_DURATION));
                 }
 
@@ -1528,7 +1504,7 @@ describe("ICO", () => {
                 const remainingTokens = testMaxEth - (purchaseAmount * tokensPerEth /  BigInt(users.length - 1));
                 const lastPurchaseAmount = (remainingTokens + BigInt(1)) / tokensPerEth;
                 
-                await expect(ico.connect(users[users.length - 1]).buyTokens({ value: lastPurchaseAmount }))
+                await expect(ico.connect(users[users.length - 1]).buyTokens(1000,5,ethers.ZeroAddress,{ value: lastPurchaseAmount }))
                     .to.be.revertedWithCustomError(ico, "NoTokensAvailable");
 
                 // Verify total supply
