@@ -8,6 +8,7 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 /**
  * @title IcoNBKToken
@@ -15,6 +16,12 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
  * @custom:security-contact dariosansano@neuro-block.com
  */
 contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
+
+    // Chainlink Price Feed para MATIC/USD
+    AggregatorV3Interface immutable maticUsdPriceFeed;
+
+    // Precio del token NBK en USD
+    uint256 public tokenPriceInUSD;
 
     struct Purchase {
         uint256 timestamp;
@@ -42,6 +49,9 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
 
     /// @notice Maximum number of tokens a user can purchase.
     uint256 public maxTokensPerUser;
+
+    /// @notice Percentage of tokens to give to referrers
+    uint256 public referedPercentage;
 
     /// @notice Total number of tokens sold so far.
     uint256 public soldTokens;
@@ -88,6 +98,20 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     uint256 public uniqueInvestors;
    
 
+    /// @notice Mapping para almacenar las relaciones de referidos
+    mapping(address => address) public referrers;
+
+    /// @notice Evento emitido cuando se establece un referido
+    event ReferrerSet(address indexed user, address indexed referrer);
+
+    /// @notice Error cuando el usuario ya tiene un referido
+    error UserAlreadyHasReferrer(address user);
+
+    /// @notice Error cuando el referido no está registrado
+    error ReferrerNotRegistered(address referrer);
+
+    /// @notice Error cuando percentage > 100
+    error InvalidReferedPercentage(uint256 percentage);
     /// ----------------- EVENTS -----------------
     // Vesting related
     /// @notice Emitted when a vesting schedule is assigned to an investor.
@@ -135,6 +159,12 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
 
     /// @notice Emitted when funds are received from an investor.
     event FundsReceived(address indexed sender, uint256 indexed amount);
+
+    /// @notice Emitted when the token price in USD is updated.
+    event TokenPriceUpdated(uint256 indexed oldPrice, uint256 indexed newPrice);
+
+    /// @notice Emitted when the referral percentage is updated.
+    event ReferralPercentageUpdated(uint256 indexed oldPercentage, uint256 indexed newPercentage);
 
     /// ----------------- ERRORS -----------------
     // Vesting related
@@ -234,19 +264,27 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * @dev Constructor to initialize the ICO contract.
      * @param tokenDistributorAddress_ Address of the TokenDistributor contract.
      * @param ownerWallet Address of the contract owner.
+     * @param maticUsdPriceFeedAddress Address of the Chainlink MATIC/USD price feed.
+     * @param tokenPriceInUSD_ Initial price of the NBK token in USD (with 8 decimals).
      */
     constructor(
         address tokenDistributorAddress_,
         address ownerWallet,
+        address maticUsdPriceFeedAddress,
+        uint256 tokenPriceInUSD_,
         uint256 secondsICOwillStart_, 
         uint256 icoDurationInDays_
         ) 
         Ownable(ownerWallet)
         {
         if(tokenDistributorAddress_ == address(0)) revert InvalidAddress(tokenDistributorAddress_);
+        if(maticUsdPriceFeedAddress == address(0)) revert InvalidAddress(maticUsdPriceFeedAddress);
         
         tokenDistributorAddress = payable(tokenDistributorAddress_);
         tokenDistributor = TokenDistributor(tokenDistributorAddress);
+        maticUsdPriceFeed = AggregatorV3Interface(maticUsdPriceFeedAddress);
+        tokenPriceInUSD = tokenPriceInUSD_;
+        referedPercentage = 5; // 5% por defecto
         
         startTime = block.timestamp + secondsICOwillStart_; // dentro de x segundos
         endTime = startTime + (icoDurationInDays_ * 24 * 60 * 60); 
@@ -263,9 +301,38 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     }
 
     /**
-     * @dev Allows an investor to purchase tokens with Ether. The number of tokens purchased is based on the current rate.
-     * Sent msg.value Amount of Ether by the investor.
-     * @return success A boolean indicating if the purchase was successful.
+     * @dev Updates the token price in USD.
+     * @param newPrice New price of the token in USD (with 8 decimals).
+     */
+    function setTokenPriceInUSD(uint256 newPrice) external onlyOwner {
+        uint256 oldPrice = tokenPriceInUSD;
+        tokenPriceInUSD = newPrice;
+        emit TokenPriceUpdated(oldPrice, newPrice);
+    }
+
+    /**
+     * @dev Gets the latest MATIC/USD price from Chainlink.
+     * @return The latest price with 8 decimals.
+     */
+    function getLatestMaticPrice() public view returns (uint256) {
+        (
+            uint80 roundId,
+            int256 price,
+            uint256 startedAt,
+            uint256 updatedAt,
+            uint80 answeredInRound
+        ) = maticUsdPriceFeed.latestRoundData();
+
+        if (price <= 0) {
+            revert ("Invalid price from oracle");
+        }
+
+        return uint256(price);
+    }
+
+    /**
+     * @dev Allows an investor to purchase tokens with MATIC. The number of tokens purchased is based on the current MATIC/USD price.
+     * @param referedUser Address of the referrer.
      *
      * @notice Reverts with custom errors if any conditions fail:
      * - `UnlockVestingIntervalsNotDefined`: if vesting is enabled but intervals are not set.
@@ -276,29 +343,37 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * 
      * @dev This function is protected with `whenNotPaused` and `nonReentrant` modifiers.
      */
-    /// #if_succeeds { :msg "Tokens bought correctly" } tokensBought == true;
-    /// #if_succeeds { :msg "Tokens sold in ICO" }  old(soldTokens) < soldTokens;
-    /// #if_succeeds { :msg "ETH transfered to distributor" }  old(address(tokenDistributorAddress).balance) < address(tokenDistributorAddress).balance;
     function buyTokens(
-        uint256 purchaseRate,
-        uint256 referedPercentage,
         address referedUser
     ) external payable whenNotPaused nonReentrant {
-        uint256 tokensToBuyInWei = msg.value * purchaseRate;
+        // Obtener el precio de MATIC y verificar que sea válido
+        
+        uint256 maticPrice = getLatestMaticPrice();
+        
+
+        // Calcular tokens basado en el precio de MATIC y el precio del token NBK
+        // msg.value está en wei (18 decimals), maticPrice tiene 8 decimals, tokenPriceInUSD tiene 8 decimals
+        uint256 tokensToBuyInWei = (msg.value * maticPrice * 10**8) / (tokenPriceInUSD * 10**8);
         address investor = _msgSender();
+
+        // Control de referido
+        bool hasReferrer = referrers[investor] != address(0);
+        address actualReferrer = hasReferrer ? referrers[investor] : address(0);
+
+        // Si se proporciona un referido en la llamada, debe coincidir con el registrado
+        if (referedUser == investor) revert InvalidReferedAddress(referedUser);
+        else if (hasReferrer && (referedUser != address(0) && referedUser != actualReferrer)) revert ReferrerNotRegistered(referedUser);
 
         checkValidPurchase(investor, tokensToBuyInWei);
 
         if (vestingEnabled) {
-            // Vesting maneja internamente la lógica de tokens
             assignVestingInternal(
                 investor,
                 tokensToBuyInWei,
                 cliffDurationInMonths,
                 vestingDurationInMonths,
                 true,
-                referedUser,
-                referedPercentage
+                actualReferrer
             );
         } else {
             if (
@@ -309,12 +384,6 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
             }
 
             icoPublicUserBalances[investor] += tokensToBuyInWei;
-
-            if (referedUser != address(0)) {
-                if (referedUser == investor) {
-                    revert InvalidReferedAddress(referedUser);
-                }
-            }
         }
 
         // Efectos antes de interacciones
@@ -335,16 +404,14 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
 
         // 2. Distribuir tokens si NO hay vesting
         if (!vestingEnabled) {
-            if (referedUser != address(0) && referedUser != investor) {
+            if (hasReferrer) {
                 uint256 tokensForReferred = Math.mulDiv(tokensToBuyInWei, referedPercentage, 100);
-                tokenDistributor.distributeTokens(referedUser, tokensForReferred);
+                tokenDistributor.distributeTokens(actualReferrer, tokensForReferred);
             }
 
             tokenDistributor.distributeTokens(investor, tokensToBuyInWei);
         }
     }
-
- 
 
     /**
      * @dev Validates if a purchase request from an investor meets all necessary conditions.
@@ -411,8 +478,8 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
         return true;
     }
 
-    function assignVesting(address investor, uint256 amount, uint256 cliff, uint256 duration, bool isPurchase, address referedUser, uint256 referedPercentage) external onlyOwner {
-        assignVestingInternal(investor, amount, cliff, duration, isPurchase, referedUser, referedPercentage);
+    function assignVesting(address investor, uint256 amount, uint256 cliff, uint256 duration, bool isPurchase, address referedUser) external onlyOwner {
+        assignVestingInternal(investor, amount, cliff, duration, isPurchase, referedUser);
     }
 
 
@@ -424,7 +491,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * @param duration Duration of the vesting in months.
      */
     /// #if_succeeds { :msg "Vesting assigned manually" } old(vestings[investor].totalAmount) < vestings[investor].totalAmount;
-    function assignVestingInternal(address investor, uint256 amount, uint256 cliff, uint256 duration, bool isPurchase, address referedUser, uint256 referedPercentage) private {
+    function assignVestingInternal(address investor, uint256 amount, uint256 cliff, uint256 duration, bool isPurchase, address referedUser) private {
         if (vestingEnabled) {
             if(unlockVestingIntervals.length != 0){
                 if(vestings[currentPhaseInterval][investor].totalAmount != 0 && phaseUserVestings[currentPhaseInterval][investor].length != 0){
@@ -444,15 +511,12 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
                     phaseUserVestings[currentPhaseInterval][investor] = unlockVestingIntervals;
                 }
 
-                if (address(referedUser) != address(0)){
-                    if(address(referedUser) == address(investor)){
-                        revert InvalidReferedAddress(referedUser);
-                    }else{
-                        uint256 tokensForReferred = Math.mulDiv(amount,referedPercentage,100);                
-                        VestingSchedule.VestingData memory referredVesting = VestingSchedule.createVesting(tokensForReferred, cliff, duration);
-                        vestings[currentPhaseInterval][referedUser] = referredVesting;
-                        phaseUserVestings[currentPhaseInterval][referedUser] = unlockVestingIntervals;
-                    }
+                if (address(referedUser) != address(0) && address(referedUser) != address(investor)){
+                    uint256 tokensForReferred = Math.mulDiv(amount,referedPercentage,100);                
+                    VestingSchedule.VestingData memory referredVesting = VestingSchedule.createVesting(tokensForReferred, cliff, duration);
+                    vestings[currentPhaseInterval][referedUser] = referredVesting;
+                    phaseUserVestings[currentPhaseInterval][referedUser] = unlockVestingIntervals;
+                    emit VestingAssigned(referedUser, tokensForReferred, currentPhaseInterval);
                 }
 
                 emit VestingAssigned(investor, amount, currentPhaseInterval);
@@ -759,6 +823,36 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      */
     receive() external payable {
         emit FundsReceived(_msgSender(), msg.value);
+    }
+
+    /**
+     * @dev Establece el referido para un usuario
+     * @param user Dirección del usuario
+     * @param referrer Dirección del referido
+     */
+    function setReferrer(address user, address referrer) external {
+        if (user == address(0) || referrer == address(0)) {
+            revert InvalidAddress(user == address(0) ? user : referrer);
+        }
+        if (user == referrer) {
+            revert InvalidReferedAddress(referrer);
+        }
+        if (referrers[user] != address(0)) {
+            revert UserAlreadyHasReferrer(user);
+        }
+        referrers[user] = referrer;
+        emit ReferrerSet(user, referrer);
+    }
+
+    /**
+     * @dev Sets the referral percentage
+     * @param newPercentage New percentage for referrals
+     */
+    function setReferedPercentage(uint256 newPercentage) external onlyOwner {
+        if (newPercentage > 100) revert InvalidReferedPercentage(newPercentage);
+        uint256 oldPercentage = referedPercentage;
+        referedPercentage = newPercentage;
+        emit ReferralPercentageUpdated(oldPercentage, newPercentage);
     }
 }
 

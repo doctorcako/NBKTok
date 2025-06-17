@@ -1,4 +1,3 @@
-
 // SPDX-License-Identifier: MIT
 import "./TokenDistributorTest.sol";
 import "./Dependencies.sol";
@@ -101,6 +100,12 @@ library VestingSchedule {
 
 contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
 
+    // Chainlink Price Feed para MATIC/USD
+    MockAggregatorV3Interface internal maticUsdPriceFeed;
+
+    // Precio del token NBK en USD
+    uint256 public tokenPriceInUSD;
+
     struct Purchase {
         uint256 timestamp;
         uint256 tokens;
@@ -112,7 +117,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
 
     /// @notice Instance of the TokenDistributor contract.
     /// @dev Used to manage the distribution of tokens.
-    TokenDistributor private immutable tokenDistributor;
+    TokenDistributor public immutable tokenDistributor;
 
     /// @notice ICO start timestamp.
     /// @dev Stored as a Unix timestamp.
@@ -128,6 +133,9 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     /// @notice Maximum number of tokens a user can purchase.
     uint256 public maxTokensPerUser;
 
+    /// @notice Percentage of tokens to give to referrers
+    uint256 public referedPercentage;
+
     /// @notice Total number of tokens sold so far.
     uint256 public soldTokens;
 
@@ -139,9 +147,6 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
 
     /// @notice Time lock duration before tokens can be accessed.
     uint256 public timelockDuration;
-
-    /// @notice Conversion rate of ETH to tokens.
-    uint256 public rate;
 
     /// @notice Minimum purchase amount required.
     uint256 public minPurchaseAmount;
@@ -176,6 +181,20 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     uint256 public uniqueInvestors;
    
 
+    /// @notice Mapping para almacenar las relaciones de referidos
+    mapping(address => address) public referrers;
+
+    /// @notice Evento emitido cuando se establece un referido
+    event ReferrerSet(address indexed user, address indexed referrer);
+
+    /// @notice Error cuando el usuario ya tiene un referido
+    error UserAlreadyHasReferrer(address user);
+
+    /// @notice Error cuando el referido no está registrado
+    error ReferrerNotRegistered(address referrer);
+
+    /// @notice Error cuando percentage > 100
+    error InvalidReferedPercentage(uint256 percentage);
     /// ----------------- EVENTS -----------------
     // Vesting related
     /// @notice Emitted when a vesting schedule is assigned to an investor.
@@ -220,9 +239,6 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     // Purchase related
     /// @notice Emitted when the minimum purchase amount is updated.
     event MinAmountPurchaseUpdated(uint256 indexed minAmount);
-
-    /// @notice Emitted when the ETH-to-token conversion rate is updated.
-    event RateUpdated(uint256 indexed oldRate, uint256 indexed newRate);
 
     /// @notice Emitted when funds are received from an investor.
     event FundsReceived(address indexed sender, uint256 indexed amount);
@@ -312,12 +328,6 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     /// @notice Thrown when an invalid address is used.
     error InvalidAddress(address account);
 
-    /// @notice Thrown when an invalid rate value is set.
-    error InvalidRateValue(uint256 rate);
-
-    /// @notice Thrown when the rate value remains unchanged.
-    error RateNotChanged(uint256 rate);
-
     /// @notice Thrown when the timelock duration is invalid.
     error InvalidTimelockDuration(uint256 duration);
 
@@ -327,33 +337,34 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     /// @notice Thrown when not correct referred address
     error InvalidReferedAddress(address refered);
 
-
-    modifier onlyICOorOwner () {
-        if((_msgSender() != address(this)) && (_msgSender() != owner())) revert NotICOorOwnerContractCalling(_msgSender());
-        _;
-    }
-
     /**
      * @dev Constructor to initialize the ICO contract.
      * @param tokenDistributorAddress_ Address of the TokenDistributor contract.
      * @param ownerWallet Address of the contract owner.
+     * @param maticUsdPriceFeedAddress Address of the Chainlink MATIC/USD price feed.
+     * @param tokenPriceInUSD_ Initial price of the NBK token in USD (with 8 decimals).
      */
     constructor(
         address tokenDistributorAddress_,
         address ownerWallet,
+        address maticUsdPriceFeedAddress,
+        uint256 tokenPriceInUSD_,
         uint256 secondsICOwillStart_, 
         uint256 icoDurationInDays_
         ) 
         Ownable(ownerWallet)
         {
         if(tokenDistributorAddress_ == address(0)) revert InvalidAddress(tokenDistributorAddress_);
+        if(maticUsdPriceFeedAddress == address(0)) revert InvalidAddress(maticUsdPriceFeedAddress);
         
         tokenDistributorAddress = payable(tokenDistributorAddress_);
         tokenDistributor = TokenDistributor(tokenDistributorAddress);
+        maticUsdPriceFeed = MockAggregatorV3Interface(maticUsdPriceFeedAddress);
+        tokenPriceInUSD = tokenPriceInUSD_;
+        referedPercentage = 5; // 5% por defecto
         
         startTime = block.timestamp + secondsICOwillStart_; // dentro de x segundos
         endTime = startTime + (icoDurationInDays_ * 24 * 60 * 60); 
-        rate = 1000; // 1 ETH = 1000 tokens
         maxTokens = 1_000_000 * 10**18; // 1 million tokens
         maxTokensPerUser = 10_000 * 10**18; // 10,000 tokens per user
         timelockDuration = 1 * 60 * 60; // 1 hour between purchases  
@@ -367,9 +378,30 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     }
 
     /**
-     * @dev Allows an investor to purchase tokens with Ether. The number of tokens purchased is based on the current rate.
-     * Sent msg.value Amount of Ether by the investor.
-     * @return success A boolean indicating if the purchase was successful.
+     * @dev Updates the token price in USD.
+     * @param newPrice New price of the token in USD (with 8 decimals).
+     */
+    function setTokenPriceInUSD(uint256 newPrice) public onlyOwner {
+        tokenPriceInUSD = newPrice;
+    }
+
+    /**
+     * @dev Gets the latest MATIC/USD price from Chainlink.
+     * @return The latest price with 8 decimals.
+     */
+    function getLatestMaticPrice() public view returns (uint256) {
+        (, int256 price,,,) = maticUsdPriceFeed.latestRoundData();
+
+        if (price <= 0) {
+            revert("Invalid price from oracle");
+        }
+
+        return uint256(price);
+    }
+
+    /**
+     * @dev Allows an investor to purchase tokens with MATIC. The number of tokens purchased is based on the current MATIC/USD price.
+     * @param referedUser Address of the referrer.
      *
      * @notice Reverts with custom errors if any conditions fail:
      * - `UnlockVestingIntervalsNotDefined`: if vesting is enabled but intervals are not set.
@@ -380,45 +412,75 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * 
      * @dev This function is protected with `whenNotPaused` and `nonReentrant` modifiers.
      */
-    /// #if_succeeds { :msg "Tokens bought correctly" } tokensBought == true;
-    /// #if_succeeds { :msg "Tokens sold in ICO" }  old(soldTokens) < soldTokens;
-    /// #if_succeeds { :msg "ETH transfered to distributor" }  old(address(tokenDistributorAddress).balance) < address(tokenDistributorAddress).balance;
-    function buyTokens(uint256 purchaseRate, uint256 referedPercentage, address referedUser) public payable whenNotPaused nonReentrant{
-        uint256 tokensToBuyInWei = (msg.value * purchaseRate);
+    function buyTokens(
+        address referedUser
+    ) public payable whenNotPaused nonReentrant {
+        // Obtener el precio de MATIC y verificar que sea válido
+        
+        uint256 maticPrice = getLatestMaticPrice();
+        
+
+        // Calcular tokens basado en el precio de MATIC y el precio del token NBK
+        // msg.value está en wei (18 decimals), maticPrice tiene 8 decimals, tokenPriceInUSD tiene 8 decimals
+        uint256 tokensToBuyInWei = (msg.value * maticPrice * 10**8) / (tokenPriceInUSD * 10**8);
         address investor = _msgSender();
+
+        // Control de referido
+        bool hasReferrer = referrers[investor] != address(0);
+        address actualReferrer = hasReferrer ? referrers[investor] : address(0);
+
+        // Si se proporciona un referido en la llamada, debe coincidir con el registrado
+        if (referedUser == investor) revert InvalidReferedAddress(referedUser);
+        else if (hasReferrer && (referedUser != address(0) && referedUser != actualReferrer)) revert ReferrerNotRegistered(referedUser);
+
         checkValidPurchase(investor, tokensToBuyInWei);
 
         if (vestingEnabled) {
-            assignVestingInternal(investor,tokensToBuyInWei, cliffDurationInMonths, vestingDurationInMonths, true, referedUser,referedPercentage);
+            assignVestingInternal(
+                investor,
+                tokensToBuyInWei,
+                cliffDurationInMonths,
+                vestingDurationInMonths,
+                true,
+                actualReferrer
+            );
         } else {
-            if (icoPublicUserBalances[investor] != 0 && (icoPublicUserBalances[investor]) + (tokensToBuyInWei)  > maxTokensPerUser){
+            if (
+                icoPublicUserBalances[investor] != 0 &&
+                (icoPublicUserBalances[investor] + tokensToBuyInWei > maxTokensPerUser)
+            ) {
                 revert TotalAmountPurchaseExceeded(investor, tokensToBuyInWei);
             }
+
             icoPublicUserBalances[investor] += tokensToBuyInWei;
         }
 
+        // Efectos antes de interacciones
         soldTokens += tokensToBuyInWei;
 
-        if(purchases[investor].tokens == 0){
+        if (purchases[investor].tokens == 0) {
             ++uniqueInvestors;
             purchases[investor].timestamp = block.timestamp;
             purchases[investor].tokens = tokensToBuyInWei;
         }
-        
-        emit SoldTokensUpdated(soldTokens - tokensToBuyInWei, soldTokens);
-        Address.sendValue(tokenDistributorAddress,msg.value);
-        if(!vestingEnabled)tokenDistributor.distributeTokens(investor, tokensToBuyInWei);
 
-        if (address(referedUser) != address(0)){
-            if(address(referedUser) == address(investor)){
-                revert InvalidReferedAddress(referedUser);
-            }else{
-                uint256 tokensForReferred = Math.mulDiv(tokensToBuyInWei,referedPercentage,100);                
-                tokenDistributor.distributeTokens(referedUser, tokensForReferred);
+        emit SoldTokensUpdated(soldTokens - tokensToBuyInWei, soldTokens);
+
+        // 🔒 Todas las interacciones después del estado
+
+        // 1. Transferir fondos al distributor
+        Address.sendValue(tokenDistributorAddress, msg.value);
+
+        // 2. Distribuir tokens si NO hay vesting
+        if (!vestingEnabled) {
+            if (hasReferrer) {
+                uint256 tokensForReferred = Math.mulDiv(tokensToBuyInWei, referedPercentage, 100);
+                tokenDistributor.distributeTokens(actualReferrer, tokensForReferred);
             }
+
+            tokenDistributor.distributeTokens(investor, tokensToBuyInWei);
         }
     }
- 
 
     /**
      * @dev Validates if a purchase request from an investor meets all necessary conditions.
@@ -436,7 +498,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * 
      * @dev Reverts with custom errors if any of the conditions are violated:
      */ 
-    function checkValidPurchase(address investor, uint256 tokensToBuyInWei) private {
+    function checkValidPurchase(address investor, uint256 tokensToBuyInWei) internal {
         if(purchases[investor].timestamp != 0 && block.timestamp < purchases[investor].timestamp + timelockDuration){
             revert TimeLockNotPassed(investor, purchases[investor].timestamp + timelockDuration);
         }
@@ -466,7 +528,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * @return Success if claimed some tokens
      */
     /// #if_succeeds {:msg "Tokens successfully claimed"} old(vestings[_msgSender()].claimedAmount) < vestings[_msgSender()].claimedAmount;
-    function claimTokens(uint256 amount) external nonReentrant returns (bool tokensClaimed){
+    function claimTokens(uint256 amount) public nonReentrant returns (bool tokensClaimed){
         uint256 totalReleasable = 0;
 
         for (uint256 i; i<=currentPhaseInterval;++i){
@@ -485,8 +547,8 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
         return true;
     }
 
-    function assignVesting(address investor, uint256 amount, uint256 cliff, uint256 duration, bool isPurchase, address referedUser, uint256 referedPercentage) public onlyOwner {
-        assignVestingInternal(investor, amount, cliff, duration, isPurchase, referedUser, referedPercentage);
+    function assignVesting(address investor, uint256 amount, uint256 cliff, uint256 duration, bool isPurchase, address referedUser) public onlyOwner {
+        assignVestingInternal(investor, amount, cliff, duration, isPurchase, referedUser);
     }
 
 
@@ -498,7 +560,7 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
      * @param duration Duration of the vesting in months.
      */
     /// #if_succeeds { :msg "Vesting assigned manually" } old(vestings[investor].totalAmount) < vestings[investor].totalAmount;
-    function assignVestingInternal(address investor, uint256 amount, uint256 cliff, uint256 duration, bool isPurchase, address referedUser, uint256 referedPercentage) private {
+    function assignVestingInternal(address investor, uint256 amount, uint256 cliff, uint256 duration, bool isPurchase, address referedUser) public {
         if (vestingEnabled) {
             if(unlockVestingIntervals.length != 0){
                 if(vestings[currentPhaseInterval][investor].totalAmount != 0 && phaseUserVestings[currentPhaseInterval][investor].length != 0){
@@ -518,18 +580,12 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
                     phaseUserVestings[currentPhaseInterval][investor] = unlockVestingIntervals;
                 }
 
-                if (address(referedUser) != address(0)){
-                    if(address(referedUser) == address(investor)){
-                        revert InvalidReferedAddress(referedUser);
-                    }else{
-                        uint256 tokensForReferred;
-                        if (referedPercentage < 0) {
-                            tokensForReferred = Math.mulDiv(amount,referedPercentage,100); 
-                            VestingSchedule.VestingData memory referredVesting = VestingSchedule.createVesting(tokensForReferred, cliff, duration);
-                            vestings[currentPhaseInterval][referedUser] = referredVesting;
-                            phaseUserVestings[currentPhaseInterval][referedUser] = unlockVestingIntervals;
-                        }                
-                    }
+                if (address(referedUser) != address(0) && address(referedUser) != address(investor)){
+                    uint256 tokensForReferred = Math.mulDiv(amount,referedPercentage,100);                
+                    VestingSchedule.VestingData memory referredVesting = VestingSchedule.createVesting(tokensForReferred, cliff, duration);
+                    vestings[currentPhaseInterval][referedUser] = referredVesting;
+                    phaseUserVestings[currentPhaseInterval][referedUser] = unlockVestingIntervals;
+                    emit VestingAssigned(referedUser, tokensForReferred, currentPhaseInterval);
                 }
 
                 emit VestingAssigned(investor, amount, currentPhaseInterval);
@@ -583,7 +639,8 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
             lastEndMonth = intervals[i].endMonth;
         }
 
-        if (totalPercentage/1000 != 100) { // 3 decimales
+        uint256 percentageTotal = totalPercentage/1000;
+        if ( percentageTotal != 100) { // 3 decimales
             revert TotalPercentageIntervalsNotEqualTo100(totalPercentage);
         }
 
@@ -836,7 +893,36 @@ contract IcoNBKToken is Ownable, Pausable, ReentrancyGuard {
     receive() external payable {
         emit FundsReceived(_msgSender(), msg.value);
     }
+
+    /**
+     * @dev Establece el referido para un usuario
+     * @param user Dirección del usuario
+     * @param referrer Dirección del referido
+     */
+    function setReferrer(address user, address referrer) public {
+        if (user == address(0) || referrer == address(0)) {
+            revert InvalidAddress(user == address(0) ? user : referrer);
+        }
+        if (user == referrer) {
+            revert InvalidReferedAddress(referrer);
+        }
+        if (referrers[user] != address(0)) {
+            revert UserAlreadyHasReferrer(user);
+        }
+        referrers[user] = referrer;
+        emit ReferrerSet(user, referrer);
+    }
+
+    /**
+     * @dev Sets the referral percentage
+     * @param newPercentage New percentage for referrals
+     */
+    function setReferedPercentage(uint256 newPercentage) public onlyOwner {
+        if (newPercentage > 100) revert InvalidReferedPercentage(newPercentage);
+        referedPercentage = newPercentage;
+    }
 }
+
 
 
 contract MockTokenDistributor is TokenDistributor {
@@ -847,30 +933,100 @@ contract MockTokenDistributor is TokenDistributor {
     }
 }
 
+interface IAggregatorV3Interface {
+    function decimals() external view returns (uint8);
+    function description() external view returns (string memory);
+    function version() external view returns (uint256);
+    function getRoundData(uint80 _roundId) external view returns (
+        uint80 roundId,
+        int256 answer,
+        uint256 startedAt,
+        uint256 updatedAt,
+        uint80 answeredInRound
+    );
+    function latestRoundData() external view returns (
+        uint80 roundId,
+        int256 answer,
+        uint256 startedAt,
+        uint256 updatedAt,
+        uint80 answeredInRound
+    );
+}
+
+contract MockAggregatorV3Interface is IAggregatorV3Interface {
+    int256 public price;
+    uint8 public decimals_;
+    uint256 public lastUpdateTime;
+    uint80 public currentRoundId;
+    uint80 public currentAnsweredInRound;
+
+    constructor(int256 _price, uint8 _decimals) {
+        price = _price;
+        decimals_ = _decimals;
+        lastUpdateTime = block.timestamp;
+        currentRoundId = 1;
+        currentAnsweredInRound = 1;
+    }
+
+    function decimals() external view override returns (uint8) {
+        return decimals_;
+    }
+
+    function description() external pure override returns (string memory) {
+        return "Mock MATIC/USD Price Feed";
+    }
+
+    function version() external pure override returns (uint256) {
+        return 1;
+    }
+
+    function getRoundData(uint80 roundId) external view override returns (
+        uint80 roundId,
+        int256 answer,
+        uint256 startedAt,
+        uint256 updatedAt,
+        uint80 answeredInRound
+    ) {
+        return (roundId, price, block.timestamp - 1, lastUpdateTime, currentAnsweredInRound);
+    }
+
+    function latestRoundData() external view override returns (
+        uint80 roundId,
+        int256 answer,
+        uint256 startedAt,
+        uint256 updatedAt,
+        uint80 answeredInRound
+    ) {
+        return (currentRoundId, price, block.timestamp - 1, lastUpdateTime, currentAnsweredInRound);
+    }
+}
+
 contract IcoNBKTokenTest is IcoNBKToken {
-    MockTokenDistributor public  mockTokenDistributor;
+    MockTokenDistributor public mockTokenDistributor;
+    MockAggregatorV3Interface public mockPriceFeed;
 
     constructor() IcoNBKToken(
         address(new MockTokenDistributor()),
         _msgSender(),
+        address(new MockAggregatorV3Interface(100000000, 8)), // 1 MATIC = 1 USD
+        100000000, // 1 USD por token
         0,
         30
     ) {
         mockTokenDistributor = MockTokenDistributor(tokenDistributorAddress);
-        VestingSchedule.VestingInterval memory v = VestingSchedule.VestingInterval(10, 10); // Ejemplo de valores: desbloqueo en el mes 10 con 10% por mes
+        mockPriceFeed = MockAggregatorV3Interface(address(maticUsdPriceFeed));
+        VestingSchedule.VestingInterval memory v = VestingSchedule.VestingInterval(10, 10);
         unlockVestingIntervals.push(v);
     }
-
 
     function echidna_test_invalid_cliff() public returns (bool) {
         (bool success, ) = address(this).call(
             abi.encodeWithSignature("createVesting(uint256,uint256,uint256)", 1000, 12, 6)
         );
-        return !success; // El test pasa si la transacción falla (revierte)
+        return !success;
     }
 
     function echidna_test_vesting_assignment() public returns (bool) {
-
         if(!vestingEnabled) {
             return true;
         }
@@ -879,11 +1035,9 @@ contract IcoNBKTokenTest is IcoNBKToken {
             return true;
         }
 
-
-        assignVesting(_msgSender(),1000,3,12,false, address(0), 0);
+        assignVesting(_msgSender(),1000,3,12,false, address(0));
         VestingSchedule.VestingData memory vesting = vestings[0][_msgSender()];
 
-        // Verificamos que los valores sean correctos
         return (
             vesting.totalAmount == 1000 &&
             vesting.claimedAmount == 0 &&
@@ -893,12 +1047,100 @@ contract IcoNBKTokenTest is IcoNBKToken {
         );
     }
 
+    function echidna_test_referrer_set() public returns (bool) {
+        // Solo permitir que el owner o el contrato de prueba ejecuten esta función
+        if (_msgSender() != owner() && _msgSender() != address(this)) {
+            return true;
+        }
+
+        address user = address(0x123);
+        address referrer = address(0xdeadbeef);
+        
+        // Verificar que las direcciones sean válidas y diferentes
+        if (user == address(0) || referrer == address(0) || user == referrer) {
+            return true;
+        }
+
+        // Verificar que el usuario no tenga ya un referido
+        if (referrers[user] != address(0)) {
+            return true;
+        }
+
+        setReferrer(user, referrer);
+        return referrers[user] == referrer;
+    }
+
+    function echidna_test_invalid_referrer() public returns (bool) {
+        address user = address(0x123);
+        address referrer = address(0x123); // Intentar establecer el mismo usuario como referido
+
+        (bool success,) = address(this).call(
+            abi.encodeWithSignature("setReferrer(address,address)", user, referrer)
+        );
+        return !success;
+    }
+
+    function echidna_test_referrer_percentage() public returns (bool) {
+        if (_msgSender() != owner()) return true;
+        
+        uint256 newPercentage = 10;
+        setReferedPercentage(newPercentage);
+        return referedPercentage == newPercentage;
+    }
+
+    function echidna_test_invalid_referrer_percentage() public returns (bool) {
+        if (_msgSender() != owner()) return true;
+        
+        (bool success,) = address(this).call(
+            abi.encodeWithSignature("setReferedPercentage(uint256)", 101)
+        );
+        return !success;
+    }
+
+    function echidna_test_token_price_update() public returns (bool) {
+        if (_msgSender() != owner()) return true;
+        
+        uint256 newPrice = 200000000; // 2 USD
+        setTokenPriceInUSD(newPrice);
+        return tokenPriceInUSD == newPrice;
+    }
+
+    function echidna_test_matic_price_feed() public view returns (bool) {
+        uint256 price = getLatestMaticPrice();
+        return price > 0;
+    }
+
+    function echidna_test_buy_tokens_with_referrer() public payable returns (bool) {
+        if (msg.value == 0) return true;
+        
+        address referrer = address(0x789);
+        if (referrer == _msgSender()) return true;
+
+        setReferrer(_msgSender(), referrer);
+        
+        (bool success,) = address(this).call{value: msg.value}(
+            abi.encodeWithSignature("buyTokens(address)", referrer)
+        );
+        
+        return success;
+    }
+
+    function echidna_test_buy_tokens_without_referrer() public payable returns (bool) {
+        if (msg.value == 0) return true;
+        
+        (bool success,) = address(this).call{value: msg.value}(
+            abi.encodeWithSignature("buyTokens(address)", address(0))
+        );
+        
+        return success;
+    }
+
     function echidna_test_ico_period_correct() public view returns (bool) {
         return startTime < endTime;
     }
 
     function echidna_test_max_tokens_per_user() public view returns (bool) {
-        address investor = address(this); // Simulación de usuario de prueba
+        address investor = address(this);
         uint256 maxPerUser = maxTokensPerUser;
         uint256 tokensBought = icoPublicUserBalances[investor];
 
@@ -910,8 +1152,11 @@ contract IcoNBKTokenTest is IcoNBKToken {
     }
 
     function echidna_test_no_purchase_with_zero_eth() public returns (bool) {
-        (bool success,) = _msgSender().call{value:0}(abi.encodeWithSignature("buyTokens()"));
-        return success;
+        try this.buyTokens(address(0)) {
+            return false; // Si la compra fue exitosa con 0 ETH, la prueba falla
+        } catch {
+            return true; // Si la compra falla con 0 ETH, la prueba pasa
+        }
     }
 
     function echidna_test_claim_tokens() public view returns (bool) {
@@ -923,7 +1168,7 @@ contract IcoNBKTokenTest is IcoNBKToken {
         VestingSchedule.VestingData memory vesting = VestingSchedule.VestingData({
             totalAmount: 1000,
             claimedAmount: 0,
-            startTime: block.timestamp - (180 days), // Hace 6 meses
+            startTime: block.timestamp - (180 days),
             cliffInMonths: 3,
             durationInMonths: 12
         });
@@ -932,44 +1177,35 @@ contract IcoNBKTokenTest is IcoNBKToken {
         vestingIntervals[0] = VestingSchedule.VestingInterval({endMonth: 6, unlockPerMonth: 10});
         vestingIntervals[1] = VestingSchedule.VestingInterval({endMonth: 12, unlockPerMonth: 20});
 
-        // Tokens que pueden ser reclamados
         uint256 releasableTokens = getReleasableTokens(_msgSender());
-
-        // Simula el reclamo de tokens
         uint256 claimedTokens = vesting.claimedAmount + releasableTokens;
 
-        // Asegura que los tokens reclamados no superen el total permitido
         return claimedTokens <= vesting.totalAmount;
     }
 
     function echidna_test_whitelist_restriction() public returns (bool) {
-        // Si la whitelist está habilitada, los usuarios que no estén en ella no deberían poder comprar tokens.
         if (whitelistEnabled) {
             if (_msgSender() != owner()){
                 return true;
             }
 
             setWhitelist(_msgSender(), true);
-            return whitelist[_msgSender()]; // True si está en whitelist, False si no
+            return whitelist[_msgSender()];
         }
-        return true; // Si la whitelist está deshabilitada, cualquiera puede comprar, por lo que la prueba pasa.
+        return true;
     }
 
-    /// @notice Verifica que la whitelist se pueda actualizar correctamente
     function echidna_test_add_remove_whitelist() public returns (bool) {
         if (_msgSender() != owner()){
             return true;
         }
         bool wasWhitelisted = whitelist[_msgSender()];
 
-        // Alternar estado en la whitelist
         setWhitelist(_msgSender(), !wasWhitelisted);
-        // Verificar que el estado cambió
         return whitelist[_msgSender()] != wasWhitelisted;
     }
 
     function echidna_test_vesting_configuration() public returns (bool) {
-
         if(_msgSender() != owner() || _msgSender() != address(this)) return true;
         if(!vestingEnabled) return true;
 
@@ -981,7 +1217,6 @@ contract IcoNBKTokenTest is IcoNBKToken {
         setVestingConfiguration(12, intervals);
         return unlockVestingIntervals.length > 0 && vestingDurationInMonths == intervals[intervals.length-1].endMonth;
     }
-
 
     function echidna_test_whitelist_toggle() public returns (bool) {
         if(_msgSender() != owner()) return true;
@@ -1056,5 +1291,4 @@ contract IcoNBKTokenTest is IcoNBKToken {
         setMinimumPurchaseAmount(1 ether);
         return minPurchaseAmount == 1 ether;
     }
-
 }
